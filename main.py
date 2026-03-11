@@ -1,0 +1,16 @@
+from pathlib import Path
+
+env_path = Path(__file__).parent / ".env"
+creds_path = Path(__file__).parent / ".credentials.json"
+
+if not env_path.exists() or not creds_path.exists():
+    print("First run — starting setup...\n")
+    from setup import main as run_setup
+    run_setup()
+    print()
+
+from bot.config import DISCORD_BOT_TOKEN
+from bot.client import bot
+
+if __name__ == "__main__":
+    bot.run(DISCORD_BOT_TOKEN)
