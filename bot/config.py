@@ -7,6 +7,7 @@ load_dotenv()
 DISCORD_BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
 MAX_HISTORY = int(os.getenv("MAX_HISTORY", "20"))
+TOOLS_ENABLED = os.getenv("TOOLS_ENABLED", "true").lower() in ("true", "1", "yes")
 
 WORKSPACE_DIR = Path(__file__).parent.parent / "workspace"
 

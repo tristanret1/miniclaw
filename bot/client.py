@@ -35,7 +35,7 @@ async def on_message(message: discord.Message):
 
     async with message.channel.typing():
         try:
-            reply = get_reply(session_key, content)
+            reply = await get_reply(session_key, content)
         except Exception as e:
             await message.reply(f"Error: {e}")
             return
