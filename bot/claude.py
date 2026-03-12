@@ -200,10 +200,12 @@ def _sanitize_history(history: list[dict]) -> list[dict]:
 
 
 def _get_history(session_key: str) -> list[dict]:
-    """Get session history, loading from DB on first access."""
+    """Get session history. DB loading disabled until sanitize is bullet-proof."""
     if session_key not in _sessions:
-        raw = load_history(session_key, MAX_HISTORY * 2)
-        _sessions[session_key] = _sanitize_history(raw)
+        # TODO: re-enable after fixing history corruption
+        # raw = load_history(session_key, MAX_HISTORY * 2)
+        # _sessions[session_key] = _sanitize_history(raw)
+        _sessions[session_key] = []
     return _sessions[session_key]
 
 
