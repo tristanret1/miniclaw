@@ -4,6 +4,7 @@ import asyncio
 import os
 import time
 
+from bot.config import GITHUB_TOKEN
 from bot.logger import get_logger
 from bot import acp, memory
 
@@ -116,7 +117,34 @@ CLAUDE_CODE_TOOL = {
     },
 }
 
-ALL_TOOLS = [EXEC_TOOL, MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL, CLAUDE_CODE_TOOL]
+DISCORD_SEND_TOOL = {
+    "name": "discord_send",
+    "description": (
+        "Send a message to a specified Discord channel proactively. "
+        "Use this to deliver notifications, reminders, or any content to a channel "
+        "without waiting for user interaction."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "channel_id": {
+                "type": "string",
+                "description": "The Discord channel ID to send the message to.",
+            },
+            "message": {
+                "type": "string",
+                "description": "The message content to send (max 2000 characters).",
+            },
+            "ephemeral": {
+                "type": "boolean",
+                "description": "If true, only the caller can see the message (default false). Only works in interaction contexts.",
+            },
+        },
+        "required": ["channel_id", "message"],
+    },
+}
+
+ALL_TOOLS = [EXEC_TOOL, MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL, CLAUDE_CODE_TOOL, DISCORD_SEND_TOOL]
 
 
 async def run_exec(command: str, timeout: int = DEFAULT_TIMEOUT, workdir: str | None = None) -> str:
@@ -126,12 +154,19 @@ async def run_exec(command: str, timeout: int = DEFAULT_TIMEOUT, workdir: str | 
     log.info("exec → %s (timeout=%ds, cwd=%s)", command, timeout, cwd or ".")
     start = time.monotonic()
 
+    # Inject GitHub token so gh/git commands can authenticate
+    env = os.environ.copy()
+    if GITHUB_TOKEN:
+        env["GH_TOKEN"] = GITHUB_TOKEN
+        env["GITHUB_TOKEN"] = GITHUB_TOKEN
+
     try:
         proc = await asyncio.create_subprocess_shell(
             command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
+            env=env,
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
@@ -165,6 +200,33 @@ async def run_exec(command: str, timeout: int = DEFAULT_TIMEOUT, workdir: str | 
     return output
 
 
+async def run_discord_send(channel_id: str, message: str, ephemeral: bool = False) -> str:
+    """Send a message to a Discord channel using the bot client."""
+    from bot.client import bot  # lazy import to avoid circular dependency
+
+    log.info("discord_send → channel=%s len=%d ephemeral=%s", channel_id, len(message), ephemeral)
+
+    try:
+        channel = bot.get_channel(int(channel_id))
+        if channel is None:
+            # Fall back to fetch if not in cache
+            channel = await bot.fetch_channel(int(channel_id))
+    except (ValueError, Exception) as e:
+        log.error("discord_send ✗ failed to resolve channel %s: %s", channel_id, e)
+        return f"Error: could not find channel {channel_id} – {e}"
+
+    try:
+        # Truncate message to Discord's 2000 char limit per message
+        chunks = [message[i : i + 2000] for i in range(0, len(message), 2000)]
+        for chunk in chunks:
+            await channel.send(chunk)
+        log.info("discord_send ✓ sent %d chunk(s) to channel %s", len(chunks), channel_id)
+        return f"Message sent to channel {channel_id} ({len(chunks)} part(s))."
+    except Exception as e:
+        log.error("discord_send ✗ failed to send to channel %s: %s", channel_id, e)
+        return f"Error sending message: {e}"
+
+
 async def handle_tool_call(tool_name: str, tool_input: dict) -> str:
     if tool_name == "exec":
         return await run_exec(
@@ -188,6 +250,12 @@ async def handle_tool_call(tool_name: str, tool_input: dict) -> str:
             task=tool_input["task"],
             cwd=tool_input.get("cwd"),
             timeout=timeout,
+        )
+    if tool_name == "discord_send":
+        return await run_discord_send(
+            channel_id=tool_input["channel_id"],
+            message=tool_input["message"],
+            ephemeral=tool_input.get("ephemeral", False),
         )
     log.warning("unknown tool called: %s", tool_name)
     return f"Unknown tool: {tool_name}"

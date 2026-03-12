@@ -13,6 +13,9 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")  # for embedding (text-embeddin
 # Claude Code integration (via claude-agent-sdk)
 ACP_CWD = os.getenv("ACP_CWD", "")  # default working directory for Claude Code tasks
 
+# GitHub token for gh CLI and git push
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+
 WORKSPACE_DIR = Path(__file__).parent.parent / "workspace"
 
 # Bootstrap files injected into system prompt, same order as openclaw

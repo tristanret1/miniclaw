@@ -10,6 +10,11 @@ from bot.logger import get_logger
 
 log = get_logger("client")
 
+# ── Message debounce ─────────────────────────────────────────────────────────
+# Wait for edits before processing. Key: message.id → asyncio.Task
+_MSG_DEBOUNCE_DELAY = 1.5  # seconds to wait for edits
+_pending_replies: dict[int, asyncio.Task] = {}
+
 # ── User memory cache ────────────────────────────────────────────────────────
 # Tracks {user_id: (username, display_name)} to avoid duplicate saves
 _known_users: dict[int, tuple[str, str]] = {}
@@ -52,7 +57,7 @@ bot = discord.Client(intents=intents)
 _IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 
 # Streaming: flush interval and buffer
-_STREAM_FLUSH_INTERVAL = 0.3  # seconds between Discord edits
+_STREAM_FLUSH_INTERVAL = 0.1  # seconds between Discord edits
 _STREAM_FLUSH_CHARS = 50     # min chars accumulated before edit
 
 
@@ -155,6 +160,58 @@ async def _send_streaming(message: discord.Message, session_key: str, user_conte
         await message.reply("[No response]")
 
 
+def _should_handle(message: discord.Message) -> bool:
+    """Check if this message should be handled (DM or @mention)."""
+    if message.guild is not None:
+        return bot.user in message.mentions
+    return True  # DM
+
+
+def _extract_content(message: discord.Message) -> str:
+    """Extract text content, stripping bot mentions."""
+    content = message.content
+    if message.guild is not None:
+        for mention_str in [f"<@{bot.user.id}>", f"<@!{bot.user.id}>"]:
+            content = content.replace(mention_str, "").strip()
+    return content
+
+
+async def _process_message(message: discord.Message) -> None:
+    """Process a message after debounce delay (edits settled)."""
+    content = _extract_content(message)
+    image_urls = _extract_image_urls(message)
+
+    if not content and not image_urls:
+        return
+
+    session_key = f"{message.channel.id}:{message.author.id}"
+    user_content = build_user_content(content, image_urls if image_urls else None)
+
+    if image_urls:
+        log.info("multimodal message: %d image(s) + %d chars text", len(image_urls), len(content))
+
+    async with message.channel.typing():
+        try:
+            reply = await get_reply(session_key, user_content)
+            for i in range(0, len(reply), 2000):
+                await message.reply(reply[i : i + 2000])
+        except Exception as e:
+            log.error("reply error: %s", e)
+            await message.reply(f"Error: {e}")
+
+
+async def _debounced_reply(message: discord.Message) -> None:
+    """Wait for potential edits before processing the message."""
+    try:
+        await asyncio.sleep(_MSG_DEBOUNCE_DELAY)
+        # If we get here, no edit cancelled us — process the message
+        await _process_message(message)
+    except asyncio.CancelledError:
+        log.debug("debounce cancelled for message %d (edited)", message.id)
+    finally:
+        _pending_replies.pop(message.id, None)
+
+
 @bot.event
 async def on_message(message: discord.Message):
     if message.author == bot.user:
@@ -166,7 +223,7 @@ async def on_message(message: discord.Message):
     except Exception as e:
         log.error("user memory error: %s", e)
 
-    # Auto-reply path (non-streaming)
+    # Auto-reply path (no debounce needed)
     if should_auto_reply(message):
         session_key = f"{message.channel.id}:{message.author.id}"
         async with message.channel.typing():
@@ -179,30 +236,31 @@ async def on_message(message: discord.Message):
                 log.error("Auto-reply error: %s", e)
         return
 
-    # DM or @mention path
-    if message.guild is not None:
-        if bot.user not in message.mentions:
-            return
-        content = message.content
-        for mention_str in [f"<@{bot.user.id}>", f"<@!{bot.user.id}>"]:
-            content = content.replace(mention_str, "").strip()
-    else:
-        content = message.content
-
-    # Extract images from attachments
-    image_urls = _extract_image_urls(message)
-
-    if not content and not image_urls:
+    # DM or @mention path — debounce to wait for edits
+    if not _should_handle(message):
         return
 
-    session_key = f"{message.channel.id}:{message.author.id}"
-    user_content = build_user_content(content, image_urls if image_urls else None)
+    # Cancel any existing pending reply for this message
+    old_task = _pending_replies.pop(message.id, None)
+    if old_task:
+        old_task.cancel()
 
-    if image_urls:
-        log.info("multimodal message: %d image(s) + %d chars text", len(image_urls), len(content))
+    task = asyncio.create_task(_debounced_reply(message))
+    _pending_replies[message.id] = task
 
-    try:
-        await _send_streaming(message, session_key, user_content)
-    except Exception as e:
-        log.error("reply error: %s", e)
-        await message.reply(f"Error: {e}")
+
+@bot.event
+async def on_message_edit(before: discord.Message, after: discord.Message):
+    """If a pending message is edited, restart the debounce timer."""
+    if after.author == bot.user:
+        return
+    if not _should_handle(after):
+        return
+
+    # Only restart if we have a pending (not-yet-processed) reply
+    old_task = _pending_replies.pop(after.id, None)
+    if old_task:
+        old_task.cancel()
+        log.info("message %d edited, restarting debounce", after.id)
+        task = asyncio.create_task(_debounced_reply(after))
+        _pending_replies[after.id] = task

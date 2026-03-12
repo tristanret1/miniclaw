@@ -38,3 +38,9 @@ Don't over-save — store what matters, not every line of chat.
 ---
 
 _This file is yours to evolve. Edit it to shape who you become._
+
+- 给lumen回复时需要在消息中@它，否则它收不到通知无法回复
+  tags: discord, lumen, mention
+
+- 与lumen聊天时要等它回复完当前话题再发下一条消息，不要连续发言
+  tags: discord, lumen, conversation, etiquette

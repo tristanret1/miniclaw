@@ -147,10 +147,13 @@ def build_user_content(text: str, image_urls: list[str] | None = None) -> str | 
 def _sanitize_history(history: list[dict]) -> list[dict]:
     """Remove incomplete tool_use/tool_result pairs from history.
 
-    Claude API requires every assistant message containing tool_use blocks
-    to be immediately followed by a user message with matching tool_result blocks.
-    Incomplete pairs happen when the bot crashes mid-tool-execution or when
-    history truncation splits a pair.
+    Claude API requires:
+    1. Every assistant message with tool_use blocks must be immediately
+       followed by a user message with matching tool_result blocks.
+    2. Every tool_result must reference a tool_use_id from the previous
+       assistant message.
+    3. History must start with a user message.
+    4. Roles must alternate (user, assistant, user, assistant, ...).
     """
     if not history:
         return history
@@ -169,25 +172,59 @@ def _sanitize_history(history: list[dict]) -> list[dict]:
             )
 
             if has_tool_use:
-                # Must have a following user message with tool_result
+                # Collect tool_use IDs from this assistant message
+                tool_use_ids = {
+                    b["id"] for b in content
+                    if isinstance(b, dict) and b.get("type") == "tool_use" and "id" in b
+                }
+
+                # Must have a following user message with matching tool_results
                 if i + 1 < len(history):
                     next_msg = history[i + 1]
                     next_content = next_msg.get("content", [])
-                    has_tool_result = (
+
+                    if (
                         next_msg.get("role") == "user"
                         and isinstance(next_content, list)
-                        and any(b.get("type") == "tool_result" for b in next_content if isinstance(b, dict))
-                    )
-                    if has_tool_result:
-                        sanitized.append(msg)
-                        sanitized.append(next_msg)
-                        i += 2
-                        continue
+                    ):
+                        # Check all tool_result IDs match a tool_use ID
+                        result_ids = {
+                            b.get("tool_use_id") for b in next_content
+                            if isinstance(b, dict) and b.get("type") == "tool_result"
+                        }
 
-                # Incomplete pair — skip this assistant message (and orphan user if any)
-                log.warning("dropping orphan tool_use message at index %d", i)
+                        if result_ids and result_ids <= tool_use_ids:
+                            sanitized.append(msg)
+                            sanitized.append(next_msg)
+                            i += 2
+                            continue
+
+                # Incomplete or mismatched pair — drop both
+                log.warning("dropping orphan tool_use/tool_result at index %d", i)
                 i += 1
+                # Also skip the next message if it's an orphan tool_result
+                if i < len(history):
+                    nc = history[i].get("content", [])
+                    if (
+                        isinstance(nc, list)
+                        and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in nc)
+                    ):
+                        log.warning("dropping orphan tool_result at index %d", i)
+                        i += 1
                 continue
+
+        # Drop user messages that contain tool_result without a preceding tool_use
+        if msg.get("role") == "user":
+            content = msg.get("content", [])
+            if (
+                isinstance(content, list)
+                and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
+            ):
+                # Check if previous sanitized message is a matching assistant tool_use
+                if not sanitized or sanitized[-1].get("role") != "assistant":
+                    log.warning("dropping orphan tool_result user message at index %d", i)
+                    i += 1
+                    continue
 
         sanitized.append(msg)
         i += 1
@@ -196,16 +233,28 @@ def _sanitize_history(history: list[dict]) -> list[dict]:
     while sanitized and sanitized[0].get("role") != "user":
         sanitized.pop(0)
 
-    return sanitized
+    # Ensure roles alternate: drop consecutive same-role messages
+    deduped = []
+    for msg in sanitized:
+        if deduped and deduped[-1].get("role") == msg.get("role"):
+            log.warning("dropping duplicate %s message to fix alternation", msg.get("role"))
+            continue
+        deduped.append(msg)
+
+    return deduped
 
 
 def _get_history(session_key: str) -> list[dict]:
-    """Get session history. DB loading disabled until sanitize is bullet-proof."""
+    """Get session history, loading from DB on first access."""
     if session_key not in _sessions:
-        # TODO: re-enable after fixing history corruption
-        # raw = load_history(session_key, MAX_HISTORY * 2)
-        # _sessions[session_key] = _sanitize_history(raw)
-        _sessions[session_key] = []
+        raw = load_history(session_key, MAX_HISTORY * 2)
+        sanitized = _sanitize_history(raw)
+        if len(raw) != len(sanitized):
+            log.warning(
+                "sanitized session %s: %d → %d messages",
+                session_key, len(raw), len(sanitized),
+            )
+        _sessions[session_key] = sanitized
     return _sessions[session_key]
 
 
@@ -281,11 +330,24 @@ async def get_reply_stream(
         except RuntimeError as e:
             if "Auth expired" in str(e):
                 # Fallback: refresh and use non-streaming
-                response = _call_claude(history)
+                response = await _call_claude(history)
                 collected_content = response.get("content", [])
                 stop_reason = response.get("stop_reason")
                 text = _extract_text(collected_content)
                 yield text
+            elif "tool_use" in str(e) or "tool_result" in str(e) or "400" in str(e):
+                # History corruption — sanitize and retry
+                old_len = len(history)
+                history[:] = _sanitize_history(history)
+                log.warning(
+                    "400 tool mismatch — sanitized history: %d → %d messages, retrying",
+                    old_len, len(history),
+                )
+                if not history:
+                    yield "[Error: conversation history was corrupted and cleared. Please try again.]"
+                    return
+                # Retry this round (don't increment round_num)
+                continue
             else:
                 raise
 
@@ -344,11 +406,20 @@ async def get_reply(session_key: str, user_message: str) -> str:
 
 async def _run_flush(session_key: str, history: list[dict]) -> None:
     """Silent agentic turn: save conversation highlights to memory."""
-    flush_history = history + [{"role": "user", "content": get_flush_prompt()}]
+    flush_history = _sanitize_history(history) + [{"role": "user", "content": get_flush_prompt()}]
 
     try:
         for _ in range(5):
-            response = _call_claude(flush_history)
+            try:
+                response = await _call_claude(flush_history)
+            except RuntimeError as e:
+                if "400" in str(e) or "tool_use" in str(e) or "tool_result" in str(e):
+                    flush_history = _sanitize_history(flush_history)
+                    log.warning("flush: sanitized history after 400, retrying")
+                    response = await _call_claude(flush_history)
+                else:
+                    raise
+
             content = response.get("content", [])
             flush_history.append({"role": "assistant", "content": content})
 
