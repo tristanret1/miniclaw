@@ -36,7 +36,7 @@ async def run_prompt(task: str, cwd: str | None = None, timeout: int = 300) -> s
     tool_log: list[str] = []
 
     try:
-        async for msg in await query(prompt=task, options=options):
+        async for msg in query(prompt=task, options=options):
             if isinstance(msg, AssistantMessage):
                 for block in msg.content:
                     if isinstance(block, TextBlock):
