@@ -36,7 +36,7 @@ def build_system_prompt() -> str:
 SYSTEM_PROMPT = build_system_prompt()
 
 # Auto-reply settings
-AUTO_REPLY_ENABLED = os.getenv("AUTO_REPLY_ENABLED", "false").lower() in ("true", "1", "yes")
+AUTO_REPLY_ENABLED = os.getenv("AUTO_REPLY_ENABLED", "true").lower() in ("true", "1", "yes")
 AUTO_REPLY_CHANNELS = os.getenv("AUTO_REPLY_CHANNELS", "").split(",")  # Channel IDs where auto-reply is allowed
-AUTO_REPLY_CHANCE = float(os.getenv("AUTO_REPLY_CHANCE", "0.1"))  # 0.1 = 10% chance to reply
+AUTO_REPLY_CHANCE = float(os.getenv("AUTO_REPLY_CHANCE", "0.9"))  # 0.1 = 10% chance to reply
 AUTO_REPLY_KEYWORDS = os.getenv("AUTO_REPLY_KEYWORDS", "").split(",")  # Keywords that trigger auto-reply
