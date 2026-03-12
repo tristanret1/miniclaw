@@ -10,9 +10,8 @@ MAX_HISTORY = int(os.getenv("MAX_HISTORY", "20"))
 TOOLS_ENABLED = os.getenv("TOOLS_ENABLED", "true").lower() in ("true", "1", "yes")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")  # for embedding (text-embedding-3-small)
 
-# ACP (Claude Code integration)
-ACP_COMMAND = os.getenv("ACP_COMMAND", "")  # custom ACP server command (auto-detected if empty)
-ACP_CWD = os.getenv("ACP_CWD", "")  # default working directory for Claude Code
+# Claude Code integration (via claude-agent-sdk)
+ACP_CWD = os.getenv("ACP_CWD", "")  # default working directory for Claude Code tasks
 
 WORKSPACE_DIR = Path(__file__).parent.parent / "workspace"
 
@@ -40,7 +39,7 @@ def build_system_prompt() -> str:
 SYSTEM_PROMPT = build_system_prompt()
 
 # Auto-reply settings
-AUTO_REPLY_ENABLED = os.getenv("AUTO_REPLY_ENABLED", "true").lower() in ("true", "1", "yes")
+AUTO_REPLY_ENABLED = os.getenv("AUTO_REPLY_ENABLED", "false").lower() in ("true", "1", "yes")
 AUTO_REPLY_CHANNELS = os.getenv("AUTO_REPLY_CHANNELS", "").split(",")  # Channel IDs where auto-reply is allowed
 AUTO_REPLY_CHANCE = float(os.getenv("AUTO_REPLY_CHANCE", "0.9"))  # 0.1 = 10% chance to reply
 AUTO_REPLY_KEYWORDS = os.getenv("AUTO_REPLY_KEYWORDS", "").split(",")  # Keywords that trigger auto-reply
