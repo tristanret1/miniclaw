@@ -1,5 +1,6 @@
 """Claude API calls — streaming, multimodal, with session persistence."""
 
+import json
 from collections.abc import AsyncGenerator
 
 import httpx
@@ -19,6 +20,20 @@ _sessions: dict[str, list[dict]] = {}
 
 # Track which sessions have been flushed
 _flushed: set[str] = set()
+
+# Shared async HTTP client for connection pooling
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(120, connect=10),
+            http2=True,
+            limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+        )
+    return _http_client
 
 MAX_TOOL_ROUNDS = 20
 
@@ -54,19 +69,20 @@ def _build_headers(token: str) -> dict:
 
 # ── Non-streaming call (used by tool loop + auto-flush) ──────────────────────
 
-def _call_claude(messages: list[dict]) -> dict:
-    """Send messages to Claude and return the full response JSON."""
+async def _call_claude(messages: list[dict]) -> dict:
+    """Send messages to Claude and return the full response JSON (async)."""
     token = _get_access_token()
     body = _build_request_body(messages, stream=False)
+    client = _get_http_client()
 
-    resp = httpx.post(MESSAGES_URL, json=body, headers=_build_headers(token), timeout=120)
+    resp = await client.post(MESSAGES_URL, json=body, headers=_build_headers(token))
 
     if resp.status_code == 401:
         creds = load_credentials()
         if creds and creds.get("refresh_token"):
             new_creds = refresh_token(creds)
-            resp = httpx.post(
-                MESSAGES_URL, json=body, headers=_build_headers(new_creds["access_token"]), timeout=120
+            resp = await client.post(
+                MESSAGES_URL, json=body, headers=_build_headers(new_creds["access_token"])
             )
 
     if resp.status_code != 200:
@@ -81,28 +97,27 @@ async def _stream_claude(messages: list[dict]) -> AsyncGenerator[dict, None]:
     """Stream SSE events from Claude. Yields parsed event dicts."""
     token = _get_access_token()
     body = _build_request_body(messages, stream=True)
+    client = _get_http_client()
 
-    async with httpx.AsyncClient(timeout=120) as client:
-        async with client.stream(
-            "POST", MESSAGES_URL, json=body, headers=_build_headers(token)
-        ) as resp:
-            if resp.status_code == 401:
-                # Token refresh not supported in stream mode; fall back
-                raise RuntimeError("Auth expired during stream")
-            if resp.status_code != 200:
-                text = await resp.aread()
-                raise RuntimeError(f"Claude API error ({resp.status_code}): {text.decode()}")
+    async with client.stream(
+        "POST", MESSAGES_URL, json=body, headers=_build_headers(token)
+    ) as resp:
+        if resp.status_code == 401:
+            raise RuntimeError("Auth expired during stream")
+        if resp.status_code != 200:
+            text = await resp.aread()
+            raise RuntimeError(f"Claude API error ({resp.status_code}): {text.decode()}")
 
-            import json
-            event_type = None
-            async for line in resp.aiter_lines():
-                if line.startswith("event: "):
-                    event_type = line[7:]
-                elif line.startswith("data: ") and event_type:
-                    data = json.loads(line[6:])
-                    data["_event"] = event_type
-                    yield data
-                    event_type = None
+        import json
+        event_type = None
+        async for line in resp.aiter_lines():
+            if line.startswith("event: "):
+                event_type = line[7:]
+            elif line.startswith("data: ") and event_type:
+                data = json.loads(line[6:])
+                data["_event"] = event_type
+                yield data
+                event_type = None
 
 
 def _extract_text(content_blocks: list[dict]) -> str:
@@ -129,10 +144,66 @@ def build_user_content(text: str, image_urls: list[str] | None = None) -> str | 
 
 # ── Session management ────────────────────────────────────────────────────────
 
+def _sanitize_history(history: list[dict]) -> list[dict]:
+    """Remove incomplete tool_use/tool_result pairs from history.
+
+    Claude API requires every assistant message containing tool_use blocks
+    to be immediately followed by a user message with matching tool_result blocks.
+    Incomplete pairs happen when the bot crashes mid-tool-execution or when
+    history truncation splits a pair.
+    """
+    if not history:
+        return history
+
+    sanitized = []
+    i = 0
+    while i < len(history):
+        msg = history[i]
+
+        # Check if this assistant message contains tool_use blocks
+        if msg.get("role") == "assistant":
+            content = msg.get("content", [])
+            has_tool_use = (
+                isinstance(content, list)
+                and any(b.get("type") == "tool_use" for b in content if isinstance(b, dict))
+            )
+
+            if has_tool_use:
+                # Must have a following user message with tool_result
+                if i + 1 < len(history):
+                    next_msg = history[i + 1]
+                    next_content = next_msg.get("content", [])
+                    has_tool_result = (
+                        next_msg.get("role") == "user"
+                        and isinstance(next_content, list)
+                        and any(b.get("type") == "tool_result" for b in next_content if isinstance(b, dict))
+                    )
+                    if has_tool_result:
+                        sanitized.append(msg)
+                        sanitized.append(next_msg)
+                        i += 2
+                        continue
+
+                # Incomplete pair — skip this assistant message (and orphan user if any)
+                log.warning("dropping orphan tool_use message at index %d", i)
+                i += 1
+                continue
+
+        sanitized.append(msg)
+        i += 1
+
+    # Ensure history starts with a user message (Claude API requirement)
+    while sanitized and sanitized[0].get("role") != "user":
+        sanitized.pop(0)
+
+    return sanitized
+
+
 def _get_history(session_key: str) -> list[dict]:
     """Get session history, loading from DB on first access."""
     if session_key not in _sessions:
-        _sessions[session_key] = load_history(session_key, MAX_HISTORY * 2)
+        raw = load_history(session_key, MAX_HISTORY * 2)
+        _sessions[session_key] = _sanitize_history(raw)
     return _sessions[session_key]
 
 
@@ -151,13 +222,14 @@ async def get_reply_stream(
     append_message(session_key, "user", user_content)
 
     if len(history) > MAX_HISTORY * 2:
-        history[:] = history[-(MAX_HISTORY * 2):]
+        history[:] = _sanitize_history(history[-(MAX_HISTORY * 2):])
 
-    # Auto-flush check
+    # Auto-flush check — run in background so it doesn't block the reply
     if session_key not in _flushed and should_flush(history):
-        log.info("auto-flush triggered for session %s", session_key)
+        log.info("auto-flush triggered for session %s (background)", session_key)
         _flushed.add(session_key)
-        await _run_flush(session_key, history)
+        import asyncio
+        asyncio.create_task(_run_flush(session_key, list(history)))
 
     # Tool-use loop (non-streaming, since we need full response to process tools)
     for round_num in range(1, MAX_TOOL_ROUNDS + 1):
@@ -227,23 +299,26 @@ async def get_reply_stream(
         log.info("tool round %d: %d call(s) — %s", round_num, len(tool_calls),
                  ", ".join(f"{b['name']}({b.get('input', {})})" for b in tool_calls))
 
-        tool_results = []
-        for block in tool_calls:
+        # Execute tool calls concurrently for better performance
+        async def _run_tool(block: dict) -> dict:
             try:
                 result = await handle_tool_call(block["name"], block.get("input", {}))
-                tool_results.append({
+                return {
                     "type": "tool_result",
                     "tool_use_id": block["id"],
                     "content": result,
-                })
+                }
             except Exception as e:
                 log.error("tool call failed: %s → %s", block["name"], e)
-                tool_results.append({
+                return {
                     "type": "tool_result",
                     "tool_use_id": block["id"],
                     "content": f"Error: {e}",
                     "is_error": True,
-                })
+                }
+
+        import asyncio as _aio
+        tool_results = await _aio.gather(*[_run_tool(b) for b in tool_calls])
 
         if not tool_results:
             yield "[Error: Tool execution failed]"
