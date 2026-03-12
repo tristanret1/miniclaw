@@ -10,6 +10,10 @@ MAX_HISTORY = int(os.getenv("MAX_HISTORY", "20"))
 TOOLS_ENABLED = os.getenv("TOOLS_ENABLED", "true").lower() in ("true", "1", "yes")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")  # for embedding (text-embedding-3-small)
 
+# ACP (Claude Code integration)
+ACP_COMMAND = os.getenv("ACP_COMMAND", "")  # custom ACP server command (auto-detected if empty)
+ACP_CWD = os.getenv("ACP_CWD", "")  # default working directory for Claude Code
+
 WORKSPACE_DIR = Path(__file__).parent.parent / "workspace"
 
 # Bootstrap files injected into system prompt, same order as openclaw

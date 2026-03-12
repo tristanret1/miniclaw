@@ -9,8 +9,22 @@ if not env_path.exists() or not creds_path.exists():
     run_setup()
     print()
 
+import asyncio
+import signal
 from bot.config import DISCORD_BOT_TOKEN
 from bot.client import bot
 
+
+async def main():
+    try:
+        await bot.start(DISCORD_BOT_TOKEN)
+    finally:
+        from bot.acp import shutdown
+        await shutdown()
+
+
 if __name__ == "__main__":
-    bot.run(DISCORD_BOT_TOKEN)
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

@@ -5,7 +5,7 @@ import os
 import time
 
 from bot.logger import get_logger
-from bot import memory
+from bot import acp, memory
 
 log = get_logger("tools")
 
@@ -88,7 +88,35 @@ MEMORY_SEARCH_TOOL = {
     },
 }
 
-ALL_TOOLS = [EXEC_TOOL, MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL]
+CLAUDE_CODE_TOOL = {
+    "name": "claude_code",
+    "description": (
+        "Delegate a coding task to Claude Code (an autonomous coding agent) via ACP. "
+        "Use this for complex programming tasks: writing code, debugging, refactoring, "
+        "reading/editing files in a project, running tests, git operations, etc. "
+        "Claude Code has full access to the filesystem and terminal."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "task": {
+                "type": "string",
+                "description": "The coding task to delegate. Be specific about what to do, which files, and expected outcome.",
+            },
+            "cwd": {
+                "type": "string",
+                "description": "Working directory for the task (defaults to ACP_CWD or current dir).",
+            },
+            "timeout": {
+                "type": "integer",
+                "description": "Timeout in seconds (default 300, max 600).",
+            },
+        },
+        "required": ["task"],
+    },
+}
+
+ALL_TOOLS = [EXEC_TOOL, MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL, CLAUDE_CODE_TOOL]
 
 
 async def run_exec(command: str, timeout: int = DEFAULT_TIMEOUT, workdir: str | None = None) -> str:
@@ -153,6 +181,13 @@ async def handle_tool_call(tool_name: str, tool_input: dict) -> str:
         return memory.search(
             query=tool_input["query"],
             max_results=tool_input.get("max_results", 10),
+        )
+    if tool_name == "claude_code":
+        timeout = min(max(tool_input.get("timeout", 300), 30), 600)
+        return await acp.run_prompt(
+            task=tool_input["task"],
+            cwd=tool_input.get("cwd"),
+            timeout=timeout,
         )
     log.warning("unknown tool called: %s", tool_name)
     return f"Unknown tool: {tool_name}"
