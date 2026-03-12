@@ -11,13 +11,18 @@ log = get_logger("sessions")
 
 DB_PATH = WORKSPACE_DIR / "sessions.db"
 
+# Reusable connection (SQLite is single-threaded anyway)
+_conn: sqlite3.Connection | None = None
+
 
 def _get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    _ensure_schema(conn)
-    return conn
+    global _conn
+    if _conn is None:
+        _conn = sqlite3.connect(str(DB_PATH))
+        _conn.row_factory = sqlite3.Row
+        _conn.execute("PRAGMA journal_mode=WAL")
+        _ensure_schema(_conn)
+    return _conn
 
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
@@ -38,28 +43,25 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
 def load_history(session_key: str, limit: int) -> list[dict]:
     """Load the most recent messages for a session."""
     conn = _get_db()
-    try:
-        rows = conn.execute(
-            "SELECT role, content FROM ("
-            "  SELECT role, content, id FROM messages"
-            "  WHERE session_key = ? ORDER BY id DESC LIMIT ?"
-            ") ORDER BY id ASC",
-            (session_key, limit),
-        ).fetchall()
+    rows = conn.execute(
+        "SELECT role, content FROM ("
+        "  SELECT role, content, id FROM messages"
+        "  WHERE session_key = ? ORDER BY id DESC LIMIT ?"
+        ") ORDER BY id ASC",
+        (session_key, limit),
+    ).fetchall()
 
-        history = []
-        for row in rows:
-            try:
-                content = json.loads(row["content"])
-            except (json.JSONDecodeError, TypeError):
-                content = row["content"]
-            history.append({"role": row["role"], "content": content})
+    history = []
+    for row in rows:
+        try:
+            content = json.loads(row["content"])
+        except (json.JSONDecodeError, TypeError):
+            content = row["content"]
+        history.append({"role": row["role"], "content": content})
 
-        if history:
-            log.info("loaded %d messages for session %s", len(history), session_key)
-        return history
-    finally:
-        conn.close()
+    if history:
+        log.info("loaded %d messages for session %s", len(history), session_key)
+    return history
 
 
 def append_message(session_key: str, role: str, content: str | list | dict) -> None:
@@ -70,23 +72,17 @@ def append_message(session_key: str, role: str, content: str | list | dict) -> N
         content_str = content
 
     conn = _get_db()
-    try:
-        conn.execute(
-            "INSERT INTO messages (session_key, role, content) VALUES (?, ?, ?)",
-            (session_key, role, content_str),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    conn.execute(
+        "INSERT INTO messages (session_key, role, content) VALUES (?, ?, ?)",
+        (session_key, role, content_str),
+    )
+    conn.commit()
 
 
 def clear_session(session_key: str) -> int:
     """Delete all messages for a session. Returns count deleted."""
     conn = _get_db()
-    try:
-        cur = conn.execute("DELETE FROM messages WHERE session_key = ?", (session_key,))
-        conn.commit()
-        log.info("cleared %d messages for session %s", cur.rowcount, session_key)
-        return cur.rowcount
-    finally:
-        conn.close()
+    cur = conn.execute("DELETE FROM messages WHERE session_key = ?", (session_key,))
+    conn.commit()
+    log.info("cleared %d messages for session %s", cur.rowcount, session_key)
+    return cur.rowcount

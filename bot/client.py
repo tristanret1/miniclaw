@@ -101,10 +101,16 @@ def should_auto_reply(message: discord.Message) -> bool:
 
 
 async def _send_streaming(message: discord.Message, session_key: str, user_content):
-    """Stream Claude's reply, editing a Discord message progressively."""
+    """Stream Claude's reply, editing a single Discord message progressively.
+
+    Strategy: always edit the SAME message during streaming.  Only when the
+    final response is complete and exceeds 2 000 chars do we send overflow
+    as follow-up messages.
+    """
     buffer = ""
     sent_msg: discord.Message | None = None
     last_edit = 0.0
+    last_edit_len = 0          # chars that were displayed at the last edit
     stream_start = asyncio.get_event_loop().time()
 
     async for chunk in get_reply_stream(session_key, user_content):
@@ -112,36 +118,39 @@ async def _send_streaming(message: discord.Message, session_key: str, user_conte
         now = asyncio.get_event_loop().time()
 
         if not sent_msg:
-            # Send first message quickly: ≥5 chars OR 0.3s since stream started
+            # Send first message quickly: ≥5 visible chars OR 0.3s elapsed
             if len(buffer.strip()) >= 5 or (now - stream_start) >= 0.3:
-                display = buffer[:1990]  # Leave room for cursor
+                display = buffer[:1990]          # leave room for cursor
                 sent_msg = await message.reply(display + " ▍")
+                last_edit_len = len(buffer)
                 last_edit = now
         else:
-            # Only update if enough time passed or significant content added
+            new_chars = len(buffer) - last_edit_len
             should_edit = (
-                (now - last_edit >= _STREAM_FLUSH_INTERVAL) 
-                or (len(buffer) - len(buffer.strip()[:1990]) >= _STREAM_FLUSH_CHARS)
+                (now - last_edit >= _STREAM_FLUSH_INTERVAL and new_chars >= _STREAM_FLUSH_CHARS)
+                or new_chars >= 100              # force update every 100 new chars
             )
 
             if should_edit:
-                # Always edit the same message, truncate if too long
-                display = buffer[:1990]  # Leave room for cursor
+                display = buffer[:1990]          # always truncate to Discord limit
                 await sent_msg.edit(content=display + " ▍")
+                last_edit_len = len(buffer)
                 last_edit = now
 
-    # Final edit: remove cursor and show full content (truncated if needed)
+    # ── Final: remove cursor and send full content ──────────────────────────
     if sent_msg:
-        final_content = buffer[:2000]  # Discord limit
-        if len(buffer) > 2000:
-            final_content = buffer[:1990] + "\n[消息过长，已截断]"
-        await sent_msg.edit(content=final_content)
+        if len(buffer) <= 2000:
+            await sent_msg.edit(content=buffer)
+        else:
+            # First 2000 chars go into the existing message
+            await sent_msg.edit(content=buffer[:2000])
+            # Overflow → follow-up messages (only once, after stream ends)
+            for i in range(2000, len(buffer), 2000):
+                await message.channel.send(buffer[i : i + 2000])
     elif buffer.strip():
-        # If no message was sent yet, send it now
-        final_content = buffer[:2000]
-        if len(buffer) > 2000:
-            final_content = buffer[:1990] + "\n[消息过长，已截断]"
-        await message.reply(final_content)
+        # Stream finished before we could send the first message
+        for i in range(0, len(buffer), 2000):
+            await message.reply(buffer[i : i + 2000])
     else:
         await message.reply("[No response]")
 
