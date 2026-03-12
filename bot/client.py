@@ -1,12 +1,47 @@
 import asyncio
 import random
+from datetime import datetime
 
 import discord
 from bot.claude import build_user_content, get_reply, get_reply_stream
 from bot.config import AUTO_REPLY_ENABLED, AUTO_REPLY_CHANNELS, AUTO_REPLY_CHANCE, AUTO_REPLY_KEYWORDS
+from bot import memory
 from bot.logger import get_logger
 
 log = get_logger("client")
+
+# ── User memory cache ────────────────────────────────────────────────────────
+# Tracks {user_id: (username, display_name)} to avoid duplicate saves
+_known_users: dict[int, tuple[str, str]] = {}
+
+
+async def _remember_user(message: discord.Message) -> None:
+    """Save user info to memory if new or name changed."""
+    user = message.author
+    uid = user.id
+    username = str(user)           # e.g. "alice#0" or "alice"
+    display_name = user.display_name  # server nickname or global display name
+
+    cached = _known_users.get(uid)
+    if cached and cached == (username, display_name):
+        return  # no change, skip
+
+    _known_users[uid] = (username, display_name)
+
+    channel_id = message.channel.id
+    timestamp = datetime.now().isoformat(timespec="seconds")
+    content = (
+        f"用户信息: ID={uid}, 用户名={username}, "
+        f"显示名={display_name}, 频道={channel_id}, 时间={timestamp}"
+    )
+    tags = ["user_profile"]
+
+    try:
+        result = memory.save(content=content, tags=tags, source="system")
+        action = "updated" if cached else "recorded"
+        log.info("user memory %s: %s (%s) → %s", action, username, display_name, result)
+    except Exception as e:
+        log.error("failed to save user memory for %s: %s", username, e)
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -17,8 +52,8 @@ bot = discord.Client(intents=intents)
 _IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 
 # Streaming: flush interval and buffer
-_STREAM_FLUSH_INTERVAL = 1.0  # seconds between Discord edits
-_STREAM_FLUSH_CHARS = 200     # min chars accumulated before edit
+_STREAM_FLUSH_INTERVAL = 0.3  # seconds between Discord edits
+_STREAM_FLUSH_CHARS = 50     # min chars accumulated before edit
 
 
 @bot.event
@@ -70,52 +105,44 @@ async def _send_streaming(message: discord.Message, session_key: str, user_conte
     buffer = ""
     sent_msg: discord.Message | None = None
     last_edit = 0.0
-    # Track all sent messages for multi-message replies
-    sent_messages: list[discord.Message] = []
+    stream_start = asyncio.get_event_loop().time()
 
     async for chunk in get_reply_stream(session_key, user_content):
         buffer += chunk
-
         now = asyncio.get_event_loop().time()
-        should_edit = (
-            (now - last_edit >= _STREAM_FLUSH_INTERVAL and len(buffer) - (len(sent_msg.content) if sent_msg else 0) >= _STREAM_FLUSH_CHARS)
-            or len(buffer) > 1900  # approaching Discord limit
-        )
 
-        if not sent_msg and buffer.strip():
-            # Send initial message
-            display = buffer[:2000]
-            sent_msg = await message.reply(display + " ▍")
-            sent_messages.append(sent_msg)
-            last_edit = now
+        if not sent_msg:
+            # Send first message quickly: ≥5 chars OR 0.3s since stream started
+            if len(buffer.strip()) >= 5 or (now - stream_start) >= 0.3:
+                display = buffer[:1990]  # Leave room for cursor
+                sent_msg = await message.reply(display + " ▍")
+                last_edit = now
+        else:
+            # Only update if enough time passed or significant content added
+            should_edit = (
+                (now - last_edit >= _STREAM_FLUSH_INTERVAL) 
+                or (len(buffer) - len(buffer.strip()[:1990]) >= _STREAM_FLUSH_CHARS)
+            )
 
-        elif should_edit and sent_msg:
-            if len(buffer) > 1900:
-                # Finalize current message, start new one
-                current_chunk = buffer[:2000]
-                await sent_msg.edit(content=current_chunk)
-                buffer = buffer[2000:]
-                if buffer.strip():
-                    sent_msg = await message.channel.send(buffer[:2000] + " ▍")
-                    sent_messages.append(sent_msg)
-                else:
-                    sent_msg = None
-            else:
-                await sent_msg.edit(content=buffer + " ▍")
-            last_edit = now
+            if should_edit:
+                # Always edit the same message, truncate if too long
+                display = buffer[:1990]  # Leave room for cursor
+                await sent_msg.edit(content=display + " ▍")
+                last_edit = now
 
-    # Final edit: remove cursor
-    if sent_msg and buffer:
-        # Handle remaining buffer that might exceed 2000
-        remaining = buffer if not sent_messages else buffer
-        if len(remaining) > 2000:
-            if sent_msg:
-                await sent_msg.edit(content=remaining[:2000])
-            for i in range(2000, len(remaining), 2000):
-                await message.channel.send(remaining[i:i+2000])
-        elif sent_msg:
-            await sent_msg.edit(content=remaining[:2000])
-    elif not sent_msg and not buffer.strip():
+    # Final edit: remove cursor and show full content (truncated if needed)
+    if sent_msg:
+        final_content = buffer[:2000]  # Discord limit
+        if len(buffer) > 2000:
+            final_content = buffer[:1990] + "\n[消息过长，已截断]"
+        await sent_msg.edit(content=final_content)
+    elif buffer.strip():
+        # If no message was sent yet, send it now
+        final_content = buffer[:2000]
+        if len(buffer) > 2000:
+            final_content = buffer[:1990] + "\n[消息过长，已截断]"
+        await message.reply(final_content)
+    else:
         await message.reply("[No response]")
 
 
@@ -123,6 +150,12 @@ async def _send_streaming(message: discord.Message, session_key: str, user_conte
 async def on_message(message: discord.Message):
     if message.author == bot.user:
         return
+
+    # Record user info to memory (non-blocking)
+    try:
+        await _remember_user(message)
+    except Exception as e:
+        log.error("user memory error: %s", e)
 
     # Auto-reply path (non-streaming)
     if should_auto_reply(message):
