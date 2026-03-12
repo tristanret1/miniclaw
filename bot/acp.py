@@ -43,15 +43,15 @@ async def run_prompt(task: str, cwd: str | None = None, timeout: int = 300) -> s
                         text_chunks.append(block.text)
                     elif isinstance(block, ToolUseBlock):
                         log.info("claude_code tool: %s", block.name)
-                    elif isinstance(block, ToolResultBlock):
-                        tool_log.append(f"• {block.tool_use_id}: done")
+                        tool_log.append(f"• {block.name}")
 
             elif isinstance(msg, ResultMessage):
-                if msg.subtype == "error":
-                    log.error("claude_code error: %s", msg.error)
-                    text_chunks.append(f"\n[Error: {msg.error}]")
+                if msg.is_error:
+                    log.error("claude_code error: %s", msg.result)
+                    text_chunks.append(f"\n[Error: {msg.result}]")
                 else:
-                    log.info("claude_code completed (cost=$%.4f)", msg.cost_usd or 0)
+                    log.info("claude_code completed (%d turns, $%.4f, %dms)",
+                             msg.num_turns, msg.total_cost_usd or 0, msg.duration_ms)
 
     except Exception as e:
         log.error("claude_code failed: %s", e)
