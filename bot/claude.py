@@ -2,8 +2,11 @@
 
 import httpx
 from bot.config import CLAUDE_MODEL, MAX_HISTORY, SYSTEM_PROMPT, TOOLS_ENABLED
+from bot.logger import get_logger
 from bot.oauth import load_credentials, refresh_token
 from bot.tools import ALL_TOOLS, handle_tool_call
+
+log = get_logger("claude")
 
 MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 
@@ -76,7 +79,7 @@ async def get_reply(session_key: str, user_message: str) -> str:
     if len(history) > MAX_HISTORY * 2:
         history[:] = history[-(MAX_HISTORY * 2):]
 
-    for _ in range(MAX_TOOL_ROUNDS):
+    for round_num in range(1, MAX_TOOL_ROUNDS + 1):
         response = _call_claude(history)
         stop_reason = response.get("stop_reason")
         content = response.get("content", [])
@@ -85,22 +88,25 @@ async def get_reply(session_key: str, user_message: str) -> str:
         history.append({"role": "assistant", "content": content})
 
         if stop_reason != "tool_use":
-            # No tool calls — return the text
             reply = _extract_text(content)
             return reply
 
         # Process tool calls and collect results
+        tool_calls = [b for b in content if b["type"] == "tool_use"]
+        log.info("tool round %d: %d call(s) — %s", round_num, len(tool_calls),
+                 ", ".join(f"{b['name']}({b['input']})" for b in tool_calls))
+
         tool_results = []
-        for block in content:
-            if block["type"] == "tool_use":
-                result = await handle_tool_call(block["name"], block["input"])
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block["id"],
-                    "content": result,
-                })
+        for block in tool_calls:
+            result = await handle_tool_call(block["name"], block["input"])
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": block["id"],
+                "content": result,
+            })
 
         # Feed tool results back to Claude
         history.append({"role": "user", "content": tool_results})
 
+    log.warning("tool loop hit max rounds (%d) for session %s", MAX_TOOL_ROUNDS, session_key)
     return "[Stopped: too many tool calls]"
