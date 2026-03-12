@@ -5,6 +5,7 @@ import os
 import time
 
 from bot.logger import get_logger
+from bot import memory
 
 log = get_logger("tools")
 
@@ -40,7 +41,54 @@ EXEC_TOOL = {
     },
 }
 
-ALL_TOOLS = [EXEC_TOOL]
+MEMORY_SAVE_TOOL = {
+    "name": "memory_save",
+    "description": (
+        "Save a piece of information to long-term memory. Use this to remember "
+        "user preferences, important facts, decisions, or anything worth recalling later. "
+        "Memories are stored as daily Markdown logs."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "content": {
+                "type": "string",
+                "description": "The information to remember.",
+            },
+            "tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Optional tags for categorization (e.g. ['preference', 'user']).",
+            },
+        },
+        "required": ["content"],
+    },
+}
+
+MEMORY_SEARCH_TOOL = {
+    "name": "memory_search",
+    "description": (
+        "Search long-term memory for previously saved information. "
+        "Use this when the user references past conversations, preferences, "
+        "or facts that may have been stored."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Keywords to search for in memory.",
+            },
+            "max_results": {
+                "type": "integer",
+                "description": "Maximum number of results (default 10).",
+            },
+        },
+        "required": ["query"],
+    },
+}
+
+ALL_TOOLS = [EXEC_TOOL, MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL]
 
 
 async def run_exec(command: str, timeout: int = DEFAULT_TIMEOUT, workdir: str | None = None) -> str:
@@ -95,6 +143,16 @@ async def handle_tool_call(tool_name: str, tool_input: dict) -> str:
             command=tool_input["command"],
             timeout=tool_input.get("timeout", DEFAULT_TIMEOUT),
             workdir=tool_input.get("workdir"),
+        )
+    if tool_name == "memory_save":
+        return memory.save(
+            content=tool_input["content"],
+            tags=tool_input.get("tags"),
+        )
+    if tool_name == "memory_search":
+        return memory.search(
+            query=tool_input["query"],
+            max_results=tool_input.get("max_results", 10),
         )
     log.warning("unknown tool called: %s", tool_name)
     return f"Unknown tool: {tool_name}"
