@@ -245,16 +245,9 @@ def _sanitize_history(history: list[dict]) -> list[dict]:
 
 
 def _get_history(session_key: str) -> list[dict]:
-    """Get session history, loading from DB on first access."""
+    """Get session history. Starts fresh each process; DB is write-only."""
     if session_key not in _sessions:
-        raw = load_history(session_key, MAX_HISTORY * 2)
-        sanitized = _sanitize_history(raw)
-        if len(raw) != len(sanitized):
-            log.warning(
-                "sanitized session %s: %d → %d messages",
-                session_key, len(raw), len(sanitized),
-            )
-        _sessions[session_key] = sanitized
+        _sessions[session_key] = []
     return _sessions[session_key]
 
 
