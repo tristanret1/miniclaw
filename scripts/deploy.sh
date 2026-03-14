@@ -5,7 +5,7 @@
 set -euo pipefail
 
 PROFILE="sen"
-INSTANCE_ID="i-01802f965da921cd0"
+INSTANCE_ID="i-041a7fb83cf05fe63"
 REPO="git@github.com:shou2077/miniclaw.git"
 APP_DIR="/home/ubuntu/miniclaw"
 SERVICE_NAME="miniclaw"

@@ -53,11 +53,17 @@ def _get_access_token() -> str:
     return creds["access_token"]
 
 
-def _build_request_body(messages: list[dict], stream: bool = False) -> dict:
+def _build_request_body(
+    messages: list[dict],
+    stream: bool = False,
+    *,
+    system_prompt: str | None = None,
+    model: str | None = None,
+) -> dict:
     body = {
-        "model": CLAUDE_MODEL,
+        "model": model or CLAUDE_MODEL,
         "max_tokens": 4096,
-        "system": SYSTEM_PROMPT,
+        "system": system_prompt or SYSTEM_PROMPT,
         "messages": messages,
         "stream": stream,
     }
@@ -77,10 +83,15 @@ def _build_headers(token: str) -> dict:
 
 # ── Non-streaming call (used by tool loop + auto-flush) ──────────────────────
 
-async def _call_claude(messages: list[dict]) -> dict:
+async def _call_claude(
+    messages: list[dict],
+    *,
+    system_prompt: str | None = None,
+    model: str | None = None,
+) -> dict:
     """Send messages to Claude and return the full response JSON (async)."""
     token = _get_access_token()
-    body = _build_request_body(messages, stream=False)
+    body = _build_request_body(messages, stream=False, system_prompt=system_prompt, model=model)
     client = _get_http_client()
 
     resp = await client.post(MESSAGES_URL, json=body, headers=_build_headers(token))
@@ -101,10 +112,15 @@ async def _call_claude(messages: list[dict]) -> dict:
 
 # ── Streaming call ────────────────────────────────────────────────────────────
 
-async def _stream_claude(messages: list[dict]) -> AsyncGenerator[dict, None]:
+async def _stream_claude(
+    messages: list[dict],
+    *,
+    system_prompt: str | None = None,
+    model: str | None = None,
+) -> AsyncGenerator[dict, None]:
     """Stream SSE events from Claude. Yields parsed event dicts."""
     token = _get_access_token()
-    body = _build_request_body(messages, stream=True)
+    body = _build_request_body(messages, stream=True, system_prompt=system_prompt, model=model)
     client = _get_http_client()
 
     async with client.stream(
@@ -347,6 +363,9 @@ def _pair_aware_window(history: list[dict], budget_chars: int, keep_last_pairs: 
 async def get_reply_stream(
     session_key: str,
     user_content: str | list[dict],
+    *,
+    system_prompt_override: str | None = None,
+    model_override: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream reply chunks. Yields text deltas as they arrive.
 
@@ -383,7 +402,11 @@ async def get_reply_stream(
         try:
             # Recompute window each round to include latest tool results, etc.
             effective_history = _pair_aware_window(history, HISTORY_CHAR_BUDGET)
-            async for event in _stream_claude(effective_history):
+            async for event in _stream_claude(
+                effective_history,
+                system_prompt=system_prompt_override,
+                model=model_override,
+            ):
                 etype = event.get("_event")
 
                 if etype == "content_block_start":
@@ -422,7 +445,11 @@ async def get_reply_stream(
         except RuntimeError as e:
             if "Auth expired" in str(e):
                 # Fallback: refresh and use non-streaming
-                response = await _call_claude(effective_history)
+                response = await _call_claude(
+                    effective_history,
+                    system_prompt=system_prompt_override,
+                    model=model_override,
+                )
                 collected_content = response.get("content", [])
                 stop_reason = response.get("stop_reason")
                 text = _extract_text(collected_content)
@@ -494,6 +521,83 @@ async def get_reply(session_key: str, user_message: str) -> str:
     async for chunk in get_reply_stream(session_key, user_message):
         chunks.append(chunk)
     return "".join(chunks)
+
+
+# ── Isolated agent turn (for cron, background tasks) ─────────────────────────
+
+async def run_isolated_turn(
+    message: str,
+    *,
+    system_prompt: str | None = None,
+    model: str | None = None,
+    max_rounds: int = 10,
+    timeout: float = 300,
+) -> str:
+    """Run a single isolated agent turn with full tool-use loop.
+
+    Unlike get_reply(), this function:
+    - Does NOT load or persist session history
+    - Does NOT trigger auto-flush
+    - Uses an ephemeral messages list (discarded after return)
+    - Supports custom system_prompt and model overrides
+    """
+    import asyncio as _aio
+
+    messages: list[dict] = [{"role": "user", "content": message}]
+
+    async def _do_turn() -> str:
+        for round_num in range(1, max_rounds + 1):
+            body = _build_request_body(
+                messages, stream=False,
+                system_prompt=system_prompt, model=model,
+            )
+            token = _get_access_token()
+            client = _get_http_client()
+
+            resp = await client.post(MESSAGES_URL, json=body, headers=_build_headers(token))
+
+            if resp.status_code == 401:
+                creds = load_credentials()
+                if creds and creds.get("refresh_token"):
+                    new_creds = refresh_token(creds)
+                    resp = await client.post(
+                        MESSAGES_URL, json=body, headers=_build_headers(new_creds["access_token"])
+                    )
+
+            if resp.status_code != 200:
+                raise RuntimeError(f"Claude API error ({resp.status_code}): {resp.text}")
+
+            response = resp.json()
+            content = response.get("content", [])
+            messages.append({"role": "assistant", "content": content})
+
+            if response.get("stop_reason") != "tool_use":
+                return _extract_text(content)
+
+            # Process tool calls
+            tool_calls = [b for b in content if b.get("type") == "tool_use"]
+            log.info("isolated turn round %d: %d tool call(s) — %s", round_num, len(tool_calls),
+                     ", ".join(b["name"] for b in tool_calls))
+
+            async def _run_tool(block: dict) -> dict:
+                try:
+                    result = await handle_tool_call(block["name"], block.get("input", {}))
+                    return {"type": "tool_result", "tool_use_id": block["id"], "content": result}
+                except Exception as e:
+                    log.error("isolated tool call failed: %s → %s", block["name"], e)
+                    return {"type": "tool_result", "tool_use_id": block["id"],
+                            "content": f"Error: {e}", "is_error": True}
+
+            tool_results = await _aio.gather(*[_run_tool(b) for b in tool_calls])
+            messages.append({"role": "user", "content": list(tool_results)})
+
+        return "[Stopped: too many tool calls]"
+
+    try:
+        return await _aio.wait_for(_do_turn(), timeout=timeout)
+    except _aio.TimeoutError:
+        log.warning("isolated turn timed out after %.0fs", timeout)
+        return f"[Timed out after {timeout:.0f}s]"
 
 
 async def _run_flush(session_key: str, history: list[dict]) -> None:

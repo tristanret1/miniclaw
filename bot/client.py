@@ -79,6 +79,14 @@ async def on_ready():
         if AUTO_REPLY_KEYWORDS:
             print(f"Auto-reply keywords: {AUTO_REPLY_KEYWORDS}")
 
+    # Start cron scheduler
+    from bot.config import CRON_ENABLED
+    if CRON_ENABLED:
+        from bot.cron import get_scheduler
+        scheduler = get_scheduler()
+        await scheduler.start(bot)
+        print("Cron scheduler started")
+
 
 def _extract_image_urls(message: discord.Message) -> list[str]:
     """Extract image URLs from message attachments and embeds."""

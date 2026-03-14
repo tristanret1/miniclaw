@@ -3,3 +3,4 @@ httpx[http2]
 python-dotenv
 claude-agent-sdk>=0.1.48
 pyyaml>=6.0
+croniter>=2.0

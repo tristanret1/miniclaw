@@ -10,10 +10,11 @@
 - `bot/` — core modules:
   - `config.py` — env loading + system prompt assembly from `workspace/` files + skills
   - `client.py` — Discord client, event handlers, streaming reply, image extraction, skill command dispatch
-  - `claude.py` — Claude API calls (streaming + non-streaming), tool-use loop, auto-flush
+  - `claude.py` — Claude API calls (streaming + non-streaming), tool-use loop, auto-flush, `run_isolated_turn()`
   - `oauth.py` — OAuth 2.0 PKCE flow, credential save/load/refresh
-  - `tools.py` — tool definitions (exec, memory_save, memory_search, claude_code, web_search)
+  - `tools.py` — tool definitions (exec, memory_save, memory_search, claude_code, web_search, cron_*)
   - `skills.py` — Clawhub-compatible skill system (SKILL.md parsing, prompt injection, slash commands)
+  - `cron.py` — Cron scheduler (SQLite storage, asyncio timer, concurrent execution, per-job context)
   - `memory.py` — SQLite + FTS5/BM25 + optional vector hybrid search
   - `sessions.py` — SQLite-backed conversation persistence
   - `acp.py` — ACP client for Claude Code integration (JSON-RPC 2.0 over NDJSON)
@@ -26,6 +27,7 @@
   - `IDENTITY.md` — agent name, emoji, vibe
   - `memory/` — memory database + daily Markdown logs (gitignored)
   - `sessions.db` — conversation history (gitignored)
+  - `cron.db` — scheduled tasks (gitignored)
 - `.credentials.json` — auto-generated OAuth tokens (never commit)
 - `.env` — runtime config (never commit)
 
@@ -60,6 +62,11 @@ python main.py         # run the bot
   - Skills are instruction documents injected into system prompt, not code.
   - User-invocable skills triggered via `/skill-name args` in Discord.
   - Dependency checking via `requires.bins`, `requires.anyBins`, `requires.env`.
+- Cron scheduler: asyncio-based, SQLite-backed (`workspace/cron.db`).
+  - Three schedule types: `every`, `cron` (expression), `at` (one-shot).
+  - Per-job context: `context` (custom instructions), `model` (override), `session_mode` (isolated/persistent).
+  - Isolated sessions via `run_isolated_turn()`: ephemeral, no history, no auto-flush.
+  - Concurrent execution with `asyncio.Semaphore(CRON_MAX_CONCURRENT)`.
 
 ## Security
 

@@ -67,6 +67,11 @@ AUTO_REPLY_KEYWORDS = os.getenv("AUTO_REPLY_KEYWORDS", "").split(",")  # Keyword
 # Session scope: user_in_channel (default), channel, or thread
 SESSION_SCOPE = os.getenv("SESSION_SCOPE", "user_in_channel")
 
+# Cron scheduler
+CRON_ENABLED = os.getenv("CRON_ENABLED", "true").lower() in ("true", "1", "yes")
+CRON_TIMEZONE = os.getenv("CRON_TIMEZONE", "America/Vancouver")
+CRON_MAX_CONCURRENT = int(os.getenv("CRON_MAX_CONCURRENT", "5"))
+
 # History window budget (approx chars, ~4 chars per token). Used to
 # construct a rolling window for the model input instead of a fixed
 # count of messages.
