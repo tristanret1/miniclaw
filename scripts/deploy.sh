@@ -105,11 +105,8 @@ run_remote() {
 
 if [[ "$UPDATE_ONLY" == true ]]; then
     # --- Update mode: pull + deps + restart ---
-    log "Updating git credentials..."
-    run_remote "\"sudo -u ubuntu bash -c 'cd $APP_DIR && git config credential.helper store && echo https://${GITHUB_PAT}@github.com > /home/ubuntu/.git-credentials && chmod 600 /home/ubuntu/.git-credentials && echo cred-ok'\""
-
     log "Pulling latest code..."
-    run_remote "\"sudo -u ubuntu bash -c 'cd $APP_DIR && git pull --rebase'\""
+    run_remote "\"sudo -u ubuntu bash -c 'cd $APP_DIR && git remote set-url origin $REPO_URL && git pull --rebase && git remote set-url origin https://github.com/${REPO_OWNER}/${REPO_NAME}.git'\""
 
     log "Installing Python packages..."
     run_remote "\"sudo -u ubuntu bash -c 'cd $APP_DIR && source venv/bin/activate && pip install -q -r requirements.txt'\""
