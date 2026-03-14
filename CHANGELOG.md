@@ -8,7 +8,7 @@
 - Slash command dispatch (`/skill-name args`) with skill context injection
 - `/skills` command to list available skills
 - Dependency checking: `requires.bins`, `requires.anyBins`, `requires.env`
-- Built-in example skills: github (gh CLI), weather (wttr.in)
+- Built-in example skills: github (gh CLI), snow-forecast (ski resort snowfall via Open-Meteo)
 - New dependency: `pyyaml>=6.0`
 
 ## v0.1.0 (2026-03-11)

@@ -20,7 +20,7 @@
   - `logger.py` — logging config (stdout + rotating file)
 - `skills/` — Clawhub-compatible skill directory (each subdirectory contains a `SKILL.md`):
   - `github/SKILL.md` — GitHub operations via gh CLI
-  - `weather/SKILL.md` — weather queries via wttr.in
+  - `snow-forecast/SKILL.md` + `snow_forecast.py` — ski resort snow forecast via Open-Meteo API
 - `workspace/` — personality bootstrap files injected into system prompt:
   - `SOUL.md` — behavior principles, language preferences
   - `IDENTITY.md` — agent name, emoji, vibe
