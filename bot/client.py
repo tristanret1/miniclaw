@@ -4,7 +4,13 @@ from datetime import datetime
 
 import discord
 from bot.claude import build_user_content, get_reply, get_reply_stream
-from bot.config import AUTO_REPLY_ENABLED, AUTO_REPLY_CHANNELS, AUTO_REPLY_CHANCE, AUTO_REPLY_KEYWORDS
+from bot.config import (
+    AUTO_REPLY_ENABLED,
+    AUTO_REPLY_CHANNELS,
+    AUTO_REPLY_CHANCE,
+    AUTO_REPLY_KEYWORDS,
+    SESSION_SCOPE,
+)
 from bot import memory
 from bot.logger import get_logger
 
@@ -84,6 +90,23 @@ def _extract_image_urls(message: discord.Message) -> list[str]:
         if embed.thumbnail and embed.thumbnail.url:
             urls.append(embed.thumbnail.url)
     return urls
+
+
+def _make_session_key(message: discord.Message) -> str:
+    """Build session key based on configured scope.
+
+    - user_in_channel (default): channel.id + author.id
+    - channel: channel.id
+    - thread: if in thread use thread.id else channel.id
+    """
+    channel_id = message.channel.id
+    if SESSION_SCOPE == "channel":
+        return f"{channel_id}"
+    if SESSION_SCOPE == "thread":
+        # Discord.py threads have their own channel IDs; fall back to channel id
+        return f"{channel_id}"
+    # default: user scoped within channel
+    return f"{channel_id}:{message.author.id}"
 
 
 def should_auto_reply(message: discord.Message) -> bool:
@@ -184,7 +207,7 @@ async def _process_message(message: discord.Message) -> None:
     if not content and not image_urls:
         return
 
-    session_key = f"{message.channel.id}:{message.author.id}"
+    session_key = _make_session_key(message)
     user_content = build_user_content(content, image_urls if image_urls else None)
 
     if image_urls:
@@ -225,11 +248,11 @@ async def on_message(message: discord.Message):
 
     # Auto-reply path (no debounce needed)
     if should_auto_reply(message):
-        session_key = f"{message.channel.id}:{message.author.id}"
+        session_key = _make_session_key(message)
         async with message.channel.typing():
             try:
-                auto_reply_prompt = f"[自动回复模式] 用户消息: {message.content}"
-                reply = await get_reply(session_key, auto_reply_prompt)
+                # Use the original user content without synthetic prefixes
+                reply = await get_reply(session_key, message.content)
                 for i in range(0, len(reply), 2000):
                     await message.reply(reply[i : i + 2000])
             except Exception as e:

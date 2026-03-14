@@ -4,9 +4,15 @@ import json
 from collections.abc import AsyncGenerator
 
 import httpx
-from bot.config import CLAUDE_MODEL, MAX_HISTORY, SYSTEM_PROMPT, TOOLS_ENABLED
+from bot.config import (
+    CLAUDE_MODEL,
+    MAX_HISTORY,
+    SYSTEM_PROMPT,
+    TOOLS_ENABLED,
+    HISTORY_CHAR_BUDGET,
+)
 from bot.logger import get_logger
-from bot.memory import should_flush, get_flush_prompt
+from bot.memory import should_flush, get_flush_prompt, FLUSH_THRESHOLD_CHARS
 from bot.oauth import load_credentials, refresh_token
 from bot.sessions import append_message, load_history
 from bot.tools import ALL_TOOLS, handle_tool_call
@@ -20,6 +26,8 @@ _sessions: dict[str, list[dict]] = {}
 
 # Track which sessions have been flushed
 _flushed: set[str] = set()
+# Track last flush size per session to allow periodic flushes
+_last_flush_size: dict[str, int] = {}
 
 # Shared async HTTP client for connection pooling
 _http_client: httpx.AsyncClient | None = None
@@ -144,6 +152,29 @@ def build_user_content(text: str, image_urls: list[str] | None = None) -> str | 
 
 # ── Session management ────────────────────────────────────────────────────────
 
+def _to_blocks(content: str | list[dict]) -> list[dict]:
+    if isinstance(content, list):
+        return content
+    return [{"type": "text", "text": str(content)}]
+
+
+def _merge_same_role(prev: dict, cur: dict) -> dict:
+    """Merge two messages with the same role into one.
+
+    - If content is string, concatenate with blank line.
+    - If lists, extend in order.
+    - If mixed, convert string to text block and extend.
+    """
+    if prev.get("role") != cur.get("role"):
+        return cur
+    pc, cc = prev.get("content"), cur.get("content")
+    # Normalize to blocks
+    p_blocks = _to_blocks(pc)
+    c_blocks = _to_blocks(cc)
+    merged = {"role": prev.get("role"), "content": list(p_blocks) + list(c_blocks)}
+    return merged
+
+
 def _sanitize_history(history: list[dict]) -> list[dict]:
     """Remove incomplete tool_use/tool_result pairs from history.
 
@@ -233,22 +264,82 @@ def _sanitize_history(history: list[dict]) -> list[dict]:
     while sanitized and sanitized[0].get("role") != "user":
         sanitized.pop(0)
 
-    # Ensure roles alternate: drop consecutive same-role messages
-    deduped = []
+    # Ensure roles alternate by merging consecutive same-role messages instead of dropping
+    merged: list[dict] = []
     for msg in sanitized:
-        if deduped and deduped[-1].get("role") == msg.get("role"):
-            log.warning("dropping duplicate %s message to fix alternation", msg.get("role"))
-            continue
-        deduped.append(msg)
+        if merged and merged[-1].get("role") == msg.get("role"):
+            merged[-1] = _merge_same_role(merged[-1], msg)
+        else:
+            merged.append(msg)
 
-    return deduped
+    return merged
 
 
 def _get_history(session_key: str) -> list[dict]:
-    """Get session history. Starts fresh each process; DB is write-only."""
+    """Get session history; lazily load from DB on first access."""
     if session_key not in _sessions:
-        _sessions[session_key] = []
+        try:
+            # Load a generous slice from DB; further windowing happens per request
+            db_hist = load_history(session_key, MAX_HISTORY * 2)
+            _sessions[session_key] = _sanitize_history(db_hist)
+            log.info("session %s initialized from DB with %d messages", session_key, len(_sessions[session_key]))
+        except Exception as e:
+            log.warning("failed to load history for %s: %s", session_key, e)
+            _sessions[session_key] = []
     return _sessions[session_key]
+
+
+def _total_chars(history: list[dict]) -> int:
+    try:
+        return sum(len(json.dumps(m.get("content", ""), ensure_ascii=False)) for m in history)
+    except Exception:
+        return 0
+
+
+def _pair_aware_window(history: list[dict], budget_chars: int, keep_last_pairs: int = 6) -> list[dict]:
+    """Build a rolling window under character budget, preserving pairs.
+
+    - Walk from the end, collecting messages until budget is reached.
+    - Keep at least keep_last_pairs full user↔assistant exchanges if possible.
+    - Preserve assistant tool_use followed by user tool_result.
+    - Merge consecutive same-role messages on the fly.
+    """
+    if not history:
+        return history
+
+    hist = _sanitize_history(history)
+    out: list[dict] = []
+    used = 0
+    pairs_kept = 0
+
+    i = len(hist) - 1
+    while i >= 0:
+        msg = hist[i]
+
+        # Prepend to output (we're walking backwards)
+        if out and out[0].get("role") == msg.get("role"):
+            out[0] = _merge_same_role(msg, out[0])
+        else:
+            out.insert(0, msg)
+
+        used = _total_chars(out)
+        if used >= budget_chars and pairs_kept >= keep_last_pairs:
+            # Remove earliest messages until within budget
+            while out and _total_chars(out) > budget_chars:
+                out.pop(0)
+            break
+
+        # Count full pairs when we just added an assistant message and previous is user
+        if len(out) >= 2 and out[-2].get("role") == "user" and out[-1].get("role") == "assistant":
+            pairs_kept += 1
+
+        # Preserve tool_use/tool_result adjacency: if current is assistant tool_use,
+        # ensure next user tool_result comes along (when walking backwards, that's i+1)
+        # Already handled by sanitize, which ensures valid pairs; nothing extra here.
+
+        i -= 1
+
+    return out
 
 
 # ── Main entry: streaming reply ───────────────────────────────────────────────
@@ -265,15 +356,21 @@ async def get_reply_stream(
     history.append({"role": "user", "content": user_content})
     append_message(session_key, "user", user_content)
 
-    if len(history) > MAX_HISTORY * 2:
-        history[:] = _sanitize_history(history[-(MAX_HISTORY * 2):])
+    # Build a pair-aware, budgeted window for the model call (recomputed each round)
+    effective_history = _pair_aware_window(history, HISTORY_CHAR_BUDGET)
 
     # Auto-flush check — run in background so it doesn't block the reply
-    if session_key not in _flushed and should_flush(history):
-        log.info("auto-flush triggered for session %s (background)", session_key)
-        _flushed.add(session_key)
-        import asyncio
-        asyncio.create_task(_run_flush(session_key, list(history)))
+    # Auto-flush: allow repeated flushes when size grows substantially.
+    # Skip when tools are disabled (flush depends on memory_save).
+    if TOOLS_ENABLED:
+        total = _total_chars(history)
+        last = _last_flush_size.get(session_key, 0)
+        # Trigger when crossing threshold and growth since last flush ≥ 40k chars
+        if total >= FLUSH_THRESHOLD_CHARS and (total - last) >= 40_000:
+            log.info("auto-flush triggered for session %s (background)", session_key)
+            _last_flush_size[session_key] = total
+            import asyncio
+            asyncio.create_task(_run_flush(session_key, list(history)))
 
     # Tool-use loop (non-streaming, since we need full response to process tools)
     for round_num in range(1, MAX_TOOL_ROUNDS + 1):
@@ -284,7 +381,9 @@ async def get_reply_stream(
         current_block = None
 
         try:
-            async for event in _stream_claude(history):
+            # Recompute window each round to include latest tool results, etc.
+            effective_history = _pair_aware_window(history, HISTORY_CHAR_BUDGET)
+            async for event in _stream_claude(effective_history):
                 etype = event.get("_event")
 
                 if etype == "content_block_start":
@@ -323,7 +422,7 @@ async def get_reply_stream(
         except RuntimeError as e:
             if "Auth expired" in str(e):
                 # Fallback: refresh and use non-streaming
-                response = await _call_claude(history)
+                response = await _call_claude(effective_history)
                 collected_content = response.get("content", [])
                 stop_reason = response.get("stop_reason")
                 text = _extract_text(collected_content)

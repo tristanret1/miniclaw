@@ -46,3 +46,11 @@ AUTO_REPLY_ENABLED = os.getenv("AUTO_REPLY_ENABLED", "false").lower() in ("true"
 AUTO_REPLY_CHANNELS = os.getenv("AUTO_REPLY_CHANNELS", "").split(",")  # Channel IDs where auto-reply is allowed
 AUTO_REPLY_CHANCE = float(os.getenv("AUTO_REPLY_CHANCE", "0.1"))  # 0.1 = 10% chance to reply
 AUTO_REPLY_KEYWORDS = os.getenv("AUTO_REPLY_KEYWORDS", "").split(",")  # Keywords that trigger auto-reply
+
+# Session scope: user_in_channel (default), channel, or thread
+SESSION_SCOPE = os.getenv("SESSION_SCOPE", "user_in_channel")
+
+# History window budget (approx chars, ~4 chars per token). Used to
+# construct a rolling window for the model input instead of a fixed
+# count of messages.
+HISTORY_CHAR_BUDGET = int(os.getenv("HISTORY_CHAR_BUDGET", str(120_000)))
