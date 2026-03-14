@@ -8,15 +8,19 @@
 
 - `main.py` — entry point (`python main.py` to run, `python setup.py` for first-time setup)
 - `bot/` — core modules:
-  - `config.py` — env loading + system prompt assembly from `workspace/` files
-  - `client.py` — Discord client, event handlers, streaming reply, image extraction
+  - `config.py` — env loading + system prompt assembly from `workspace/` files + skills
+  - `client.py` — Discord client, event handlers, streaming reply, image extraction, skill command dispatch
   - `claude.py` — Claude API calls (streaming + non-streaming), tool-use loop, auto-flush
   - `oauth.py` — OAuth 2.0 PKCE flow, credential save/load/refresh
-  - `tools.py` — tool definitions (exec, memory_save, memory_search, claude_code)
+  - `tools.py` — tool definitions (exec, memory_save, memory_search, claude_code, web_search)
+  - `skills.py` — Clawhub-compatible skill system (SKILL.md parsing, prompt injection, slash commands)
   - `memory.py` — SQLite + FTS5/BM25 + optional vector hybrid search
   - `sessions.py` — SQLite-backed conversation persistence
   - `acp.py` — ACP client for Claude Code integration (JSON-RPC 2.0 over NDJSON)
   - `logger.py` — logging config (stdout + rotating file)
+- `skills/` — Clawhub-compatible skill directory (each subdirectory contains a `SKILL.md`):
+  - `github/SKILL.md` — GitHub operations via gh CLI
+  - `weather/SKILL.md` — weather queries via wttr.in
 - `workspace/` — personality bootstrap files injected into system prompt:
   - `SOUL.md` — behavior principles, language preferences
   - `IDENTITY.md` — agent name, emoji, vibe
@@ -51,7 +55,11 @@ python main.py         # run the bot
 - ACP: Claude Code integration via JSON-RPC 2.0 over NDJSON/stdio; singleton process reused across calls.
 - Discord messages split at 2000 chars (Discord limit).
 - OAuth token refresh happens automatically on 401 (single retry).
-- System prompt assembled from `workspace/SOUL.md` + `workspace/IDENTITY.md`.
+- System prompt assembled from `workspace/SOUL.md` + `workspace/IDENTITY.md` + loaded skills.
+- Skill system: Clawhub-compatible SKILL.md format (YAML frontmatter + Markdown instructions).
+  - Skills are instruction documents injected into system prompt, not code.
+  - User-invocable skills triggered via `/skill-name args` in Discord.
+  - Dependency checking via `requires.bins`, `requires.anyBins`, `requires.env`.
 
 ## Security
 

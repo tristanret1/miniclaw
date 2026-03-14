@@ -20,13 +20,14 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
 
 WORKSPACE_DIR = Path(__file__).parent.parent / "workspace"
+SKILLS_DIR = Path(__file__).parent.parent / "skills"
 
 # Bootstrap files injected into system prompt, same order as openclaw
 _BOOTSTRAP_FILES = ["SOUL.md", "IDENTITY.md"]
 
 
 def build_system_prompt() -> str:
-    """Build system prompt by reading workspace bootstrap files."""
+    """Build system prompt by reading workspace bootstrap files + skills."""
     parts: list[str] = []
 
     for filename in _BOOTSTRAP_FILES:
@@ -37,9 +38,22 @@ def build_system_prompt() -> str:
                 parts.append(content)
 
     if not parts:
-        return "You are a helpful assistant."
+        parts.append("You are a helpful assistant.")
+
+    # Inject skills into system prompt
+    from bot.skills import load_skills, build_skills_prompt
+    skills = load_skills(SKILLS_DIR)
+    skills_prompt = build_skills_prompt(skills)
+    if skills_prompt:
+        parts.append(skills_prompt)
 
     return "\n\n---\n\n".join(parts)
+
+
+def get_loaded_skills():
+    """Return loaded skills (cached after first system prompt build)."""
+    from bot.skills import load_skills
+    return load_skills(SKILLS_DIR)
 
 
 SYSTEM_PROMPT = build_system_prompt()

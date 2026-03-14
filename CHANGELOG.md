@@ -1,11 +1,15 @@
 # Changelog
 
-## v0.2.0 (planned)
+## v0.2.0 (2026-03-13)
 
 ### Changes
 - Skill system: load SKILL.md from `skills/` directory, Clawhub format compatible
-- Skill prompt injection into system prompt
-- Slash command dispatch (`/skill-name args`)
+- Skill prompt injection into system prompt (`<available-skills>` XML block)
+- Slash command dispatch (`/skill-name args`) with skill context injection
+- `/skills` command to list available skills
+- Dependency checking: `requires.bins`, `requires.anyBins`, `requires.env`
+- Built-in example skills: github (gh CLI), weather (wttr.in)
+- New dependency: `pyyaml>=6.0`
 
 ## v0.1.0 (2026-03-11)
 
