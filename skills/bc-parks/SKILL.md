@@ -63,6 +63,11 @@ python3 skills/bc-parks/bc_parks.py --json alice-lake
 - Weekend dates are auto-generated (Saturday-Sunday) plus a "tomorrow" check
 - Availability changes frequently — results are a snapshot in time
 
+## Known Limitations
+
+- **HTTP 403 on cloud servers**: BC Parks API blocks requests from AWS/GCP/Azure data center IPs (WAF/CDN anti-bot). The script works locally but may return 403 on EC2/cloud instances. If you see 403 errors, inform the user that the BC Parks API is blocking server-side requests and suggest they try running the script locally.
+- The `--insecure` flag does NOT fix 403 — it only skips SSL verification, which is a different issue.
+
 ## When user asks vaguely
 
 - "Any camping spots?" → run default (alice-lake, next 4 weekends)

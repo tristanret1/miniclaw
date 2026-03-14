@@ -43,7 +43,7 @@ def _get_http_client() -> httpx.AsyncClient:
         )
     return _http_client
 
-MAX_TOOL_ROUNDS = 20
+MAX_TOOL_ROUNDS = 200
 
 
 def _get_access_token() -> str:
@@ -62,7 +62,7 @@ def _build_request_body(
 ) -> dict:
     body = {
         "model": model or CLAUDE_MODEL,
-        "max_tokens": 4096,
+        "max_tokens": 16384,
         "system": system_prompt or SYSTEM_PROMPT,
         "messages": messages,
         "stream": stream,
@@ -392,6 +392,7 @@ async def get_reply_stream(
             asyncio.create_task(_run_flush(session_key, list(history)))
 
     # Tool-use loop (non-streaming, since we need full response to process tools)
+    _consecutive_400s = 0
     for round_num in range(1, MAX_TOOL_ROUNDS + 1):
         # Try streaming first — if no tool use, we stream directly to Discord
         collected_text = []
@@ -455,17 +456,33 @@ async def get_reply_stream(
                 text = _extract_text(collected_content)
                 yield text
             elif "tool_use" in str(e) or "tool_result" in str(e) or "400" in str(e):
-                # History corruption — sanitize and retry
+                _consecutive_400s += 1
                 old_len = len(history)
                 history[:] = _sanitize_history(history)
                 log.warning(
-                    "400 tool mismatch — sanitized history: %d → %d messages, retrying",
-                    old_len, len(history),
+                    "400 error (attempt %d): %s — sanitized history: %d → %d messages",
+                    _consecutive_400s, str(e)[:200], old_len, len(history),
                 )
+
                 if not history:
                     yield "[Error: conversation history was corrupted and cleared. Please try again.]"
                     return
-                # Retry this round (don't increment round_num)
+
+                # If sanitize didn't help, progressively trim oldest messages
+                if len(history) == old_len and _consecutive_400s >= 2:
+                    # Drop oldest 2 messages (preserve user/assistant pairing)
+                    trim = min(2, len(history) - 1)
+                    history[:] = history[trim:]
+                    # Ensure still starts with user
+                    while history and history[0].get("role") != "user":
+                        history.pop(0)
+                    log.warning("400 persisted — trimmed %d oldest messages, %d remaining", trim, len(history))
+
+                if _consecutive_400s >= 5:
+                    log.error("400 error after %d retries, giving up", _consecutive_400s)
+                    yield "[Error: repeated API errors. Try starting a new conversation.]"
+                    return
+
                 continue
             else:
                 raise
@@ -504,13 +521,24 @@ async def get_reply_stream(
         tool_results = await _aio.gather(*[_run_tool(b) for b in tool_calls])
 
         if not tool_results:
-            yield "[Error: Tool execution failed]"
+            err_msg = "[Error: Tool execution failed]"
+            err_content = [{"type": "text", "text": err_msg}]
+            history.append({"role": "assistant", "content": err_content})
+            append_message(session_key, "assistant", err_content)
+            yield err_msg
             return
 
         history.append({"role": "user", "content": tool_results})
         append_message(session_key, "user", tool_results)
 
-    yield "[Stopped: too many tool calls]"
+    # Tool loop exhausted — close with a synthetic assistant message so
+    # history doesn't end with an orphan tool_result (which causes 400 on
+    # the next conversation turn).
+    stop_msg = "[Stopped: too many tool calls]"
+    stop_content = [{"type": "text", "text": stop_msg}]
+    history.append({"role": "assistant", "content": stop_content})
+    append_message(session_key, "assistant", stop_content)
+    yield stop_msg
 
 
 # ── Legacy non-streaming entry (for auto-reply, flush, etc.) ──────────────────

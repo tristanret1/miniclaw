@@ -116,6 +116,8 @@ async def check_map(
     }
     try:
         async with session.get(API_BASE, params=params) as resp:
+            if resp.status == 403:
+                return {"map_id": map_id, "error": "HTTP 403 — BC Parks API blocked this request (likely WAF blocking cloud/server IPs)", "sites": []}
             if resp.status != 200:
                 return {"map_id": map_id, "error": f"HTTP {resp.status}", "sites": []}
             data = await resp.json()
