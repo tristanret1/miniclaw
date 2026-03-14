@@ -16,6 +16,9 @@ ACP_CWD = os.getenv("ACP_CWD", "")  # default working directory for Claude Code 
 # GitHub token for gh CLI and git push
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 
+# Web search (Brave Search API)
+BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
+
 WORKSPACE_DIR = Path(__file__).parent.parent / "workspace"
 
 # Bootstrap files injected into system prompt, same order as openclaw

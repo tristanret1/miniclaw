@@ -4,7 +4,9 @@ import asyncio
 import os
 import time
 
-from bot.config import GITHUB_TOKEN
+import httpx
+
+from bot.config import BRAVE_API_KEY, GITHUB_TOKEN
 from bot.logger import get_logger
 from bot import acp, memory
 
@@ -117,6 +119,33 @@ CLAUDE_CODE_TOOL = {
     },
 }
 
+WEB_SEARCH_TOOL = {
+    "name": "web_search",
+    "description": (
+        "Search the web for real-time information using Brave Search API. "
+        "Use this when the user asks about current events, recent news, live data, "
+        "or anything that requires up-to-date information beyond your knowledge cutoff."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "The search query.",
+            },
+            "count": {
+                "type": "integer",
+                "description": "Number of results to return (1-10, default 5).",
+            },
+            "freshness": {
+                "type": "string",
+                "description": "Time filter: 'day', 'week', 'month', or 'year'.",
+            },
+        },
+        "required": ["query"],
+    },
+}
+
 DISCORD_SEND_TOOL = {
     "name": "discord_send",
     "description": (
@@ -144,7 +173,7 @@ DISCORD_SEND_TOOL = {
     },
 }
 
-ALL_TOOLS = [EXEC_TOOL, MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL, CLAUDE_CODE_TOOL] # DISCORD_SEND_TOOL
+ALL_TOOLS = [EXEC_TOOL, MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL, CLAUDE_CODE_TOOL, WEB_SEARCH_TOOL] # DISCORD_SEND_TOOL
 
 
 async def run_exec(command: str, timeout: int = DEFAULT_TIMEOUT, workdir: str | None = None) -> str:
@@ -200,6 +229,66 @@ async def run_exec(command: str, timeout: int = DEFAULT_TIMEOUT, workdir: str | 
     return output
 
 
+async def run_web_search(query: str, count: int = 5, freshness: str | None = None) -> str:
+    """Search the web via Brave Search API and return formatted results."""
+    if not BRAVE_API_KEY:
+        return "Error: BRAVE_API_KEY not configured. Add it to .env to enable web search."
+
+    count = min(max(count, 1), 10)
+    log.info("web_search → %r (count=%d, freshness=%s)", query, count, freshness)
+    start = time.monotonic()
+
+    params: dict[str, str | int] = {"q": query, "count": count}
+    if freshness in ("day", "week", "month", "year"):
+        params["freshness"] = freshness
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://api.search.brave.com/res/v1/web/search",
+                params=params,
+                headers={
+                    "Accept": "application/json",
+                    "Accept-Encoding": "gzip",
+                    "X-Subscription-Token": BRAVE_API_KEY,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPStatusError as e:
+        log.error("web_search ✗ HTTP %s: %s", e.response.status_code, e.response.text[:200])
+        return f"Search failed (HTTP {e.response.status_code})"
+    except Exception as e:
+        log.error("web_search ✗ %s", e)
+        return f"Search failed: {e}"
+
+    elapsed = time.monotonic() - start
+    results = data.get("web", {}).get("results", [])
+
+    if not results:
+        log.info("web_search ✓ no results (%.1fs)", elapsed)
+        return "No results found."
+
+    lines: list[str] = []
+    for i, r in enumerate(results[:count], 1):
+        title = r.get("title", "")
+        url = r.get("url", "")
+        desc = r.get("description", "")
+        age = r.get("age", "")
+        line = f"{i}. **{title}**\n   {url}\n   {desc}"
+        if age:
+            line += f"\n   ({age})"
+        lines.append(line)
+
+    output = f"Search results for: {query}\n\n" + "\n\n".join(lines)
+
+    if len(output) > MAX_OUTPUT_CHARS:
+        output = output[:MAX_OUTPUT_CHARS] + "\n... [truncated]"
+
+    log.info("web_search ✓ %d results (%.1fs)", len(results), elapsed)
+    return output
+
+
 async def run_discord_send(channel_id: str, message: str, ephemeral: bool = False) -> str:
     """Send a message to a Discord channel using the bot client."""
     from bot.client import bot  # lazy import to avoid circular dependency
@@ -250,6 +339,12 @@ async def handle_tool_call(tool_name: str, tool_input: dict) -> str:
             task=tool_input["task"],
             cwd=tool_input.get("cwd"),
             timeout=timeout,
+        )
+    if tool_name == "web_search":
+        return await run_web_search(
+            query=tool_input["query"],
+            count=tool_input.get("count", 5),
+            freshness=tool_input.get("freshness"),
         )
     if tool_name == "discord_send":
         return await run_discord_send(
