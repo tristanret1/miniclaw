@@ -4,7 +4,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from bot.config import MAX_HISTORY, WORKSPACE_DIR
+from bot.config import MAX_HISTORY, PROVIDER, WORKSPACE_DIR
 from bot.logger import get_logger
 from bot.message import Content, Message
 from bot.provider.transform import sanitize
@@ -101,7 +101,7 @@ class SessionManager:
         """Get session history, loading from DB on first access."""
         if session_key not in self._cache:
             raw = _load_from_db(session_key, MAX_HISTORY * 2)
-            sanitized = sanitize(raw, "anthropic")
+            sanitized = sanitize(raw, PROVIDER)
             if len(raw) != len(sanitized):
                 log.warning(
                     "sanitized session %s: %d -> %d messages",
@@ -120,7 +120,7 @@ class SessionManager:
         """Trim history if it exceeds the max limit."""
         history = self.get_history(session_key)
         if len(history) > MAX_HISTORY * 2:
-            history[:] = sanitize(history[-(MAX_HISTORY * 2):], "anthropic")
+            history[:] = sanitize(history[-(MAX_HISTORY * 2):], PROVIDER)
 
     def clear(self, session_key: str) -> int:
         """Clear session from cache and DB."""

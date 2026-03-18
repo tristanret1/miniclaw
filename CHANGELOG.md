@@ -7,6 +7,21 @@
 - Skill prompt injection into system prompt
 - Slash command dispatch (`/skill-name args`)
 
+## v0.2.1 (2026-03-17)
+
+### Changes
+- **Codex provider**: add OpenAI Codex as a second LLM provider
+  - `bot/provider/codex.py` — Codex Responses API: streaming SSE, tool calling, message format translation
+  - `bot/codex_oauth.py` — OAuth 2.0 Device Authorization (headless) flow for ChatGPT subscription
+  - Message transformation: Anthropic format ↔ OpenAI Responses API format (bidirectional)
+  - Tool definitions auto-converted: Anthropic `input_schema` → OpenAI `parameters`
+  - SSE events translated to Anthropic-compatible format (transparent to StreamProcessor)
+- `PROVIDER` env var to switch between `anthropic` and `codex`
+- `CODEX_MODEL` env var (default: `gpt-5.3-codex`)
+- `setup.py` updated: choose provider during setup, Codex headless device auth
+- Sanitization uses configured provider (not hardcoded "anthropic")
+- 15 new Codex tests (message transform, tool conversion, response mapping, provider config)
+
 ## v0.2.0 (2026-03-17)
 
 ### Changes

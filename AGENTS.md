@@ -1,6 +1,6 @@
 # MiniClaw — System Design Document
 
-- Repo: minimal Discord chatbot powered by Claude (Anthropic OAuth 2.0 PKCE)
+- Repo: minimal Discord chatbot powered by Claude / Codex (multi-provider)
 - Language: Python 3.13+
 - No build step; pytest for testing.
 
@@ -16,7 +16,8 @@ miniclaw/
 ├── requirements.txt                 # Runtime dependencies
 ├── .env                             # Runtime config (gitignored)
 ├── .env.example                     # Config template with all supported variables
-├── .credentials.json                # OAuth tokens (gitignored, 0o600 perms)
+├── .credentials.json                # Anthropic OAuth tokens (gitignored, 0o600 perms)
+├── .codex_credentials.json          # Codex OAuth tokens (gitignored, 0o600 perms)
 │
 ├── bot/                             # Core application modules
 │   ├── config.py                    # Env loading + system prompt assembly
@@ -29,8 +30,10 @@ miniclaw/
 │   │   ├── __init__.py              # Provider registry + get_provider() factory
 │   │   ├── base.py                  # BaseProvider ABC (stream, call, refresh_auth)
 │   │   ├── anthropic.py             # Anthropic: OAuth, httpx, SSE streaming
+│   │   ├── codex.py                 # Codex: OpenAI Responses API, OAuth, SSE streaming
 │   │   └── transform.py            # Message sanitization middleware per provider
 │   ├── tools.py                     # Tool definitions + handle_tool_call() dispatch
+│   ├── codex_oauth.py               # Codex OAuth 2.0 device auth (headless)
 │   ├── memory.py                    # SQLite + FTS5/BM25 + optional vector hybrid search
 │   ├── oauth.py                     # OAuth 2.0 PKCE flow, credential save/load/refresh
 │   ├── acp.py                       # Claude Code integration (claude-agent-sdk)
@@ -250,6 +253,7 @@ llm.stream(session_key, user_content)
 
 ### 4. Provider Call (Non-Streaming)
 
+**Anthropic:**
 ```
 AnthropicProvider.call(messages, system, tools, max_tokens)
   │
@@ -266,6 +270,31 @@ AnthropicProvider.call(messages, system, tools, max_tokens)
   ├─ If non-200: raise RuntimeError
   │
   └─ Return response JSON
+```
+
+**Codex:**
+```
+CodexProvider.call(messages, system, tools, max_tokens)
+  │
+  ├─ creds = _get_auth()                  # Auto-refresh if expired
+  ├─ body = {model, input: [...], max_output_tokens, stream:false, tools}
+  │   ├─ _to_codex_messages():            # Convert message format
+  │   │   user text → {role: "user", content: [{type: "input_text", text}]}
+  │   │   assistant → {role: "assistant", content: [{type: "output_text", text}]}
+  │   │   tool_use  → {type: "function_call", call_id, name, arguments}
+  │   │   tool_result → {type: "function_call_output", call_id, output}
+  │   │   system    → {role: "developer", content: str}
+  │   └─ _to_codex_tools():              # Convert tool definitions
+  │       Anthropic {name, input_schema} → OpenAI {type:"function", name, parameters}
+  │
+  ├─ POST https://chatgpt.com/backend-api/codex/responses
+  │   Headers: Bearer {token}, ChatGPT-Account-Id (for org subscriptions)
+  │
+  ├─ _codex_response_to_anthropic():      # Convert response back
+  │   message/output_text → {type: "text", text}
+  │   function_call       → {type: "tool_use", id, name, input}
+  │
+  └─ Return Anthropic-compatible response dict
 ```
 
 ---
@@ -424,10 +453,10 @@ search(query)
 
 ## OAuth Authentication
 
-### Token Lifecycle
+### Anthropic (Claude)
 
 ```
-setup.py (first time):
+setup.py → setup_claude():
   ├─ Generate PKCE: code_verifier + code_challenge (SHA256, base64url)
   ├─ Open browser → claude.ai/oauth/authorize
   │   Params: client_id, response_type=code, redirect_uri, scope, code_challenge
@@ -437,16 +466,45 @@ setup.py (first time):
 
 Runtime:
   ├─ load_credentials() → read .credentials.json
-  ├─ Use access_token in Authorization header
-  └─ On 401:
-      ├─ refresh_token() → POST /v1/oauth/token (grant_type=refresh_token)
-      ├─ save_credentials() → update .credentials.json
-      └─ Retry original request with new token
+  ├─ Use access_token in Authorization: Bearer header
+  └─ On 401: refresh_token() → retry
 ```
 
-### Scopes
+Scopes: `org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers`
 
-`org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers`
+### Codex (OpenAI — Device Auth / Headless)
+
+```
+setup.py → setup_codex():
+  ├─ POST auth.openai.com/api/accounts/deviceauth/usercode
+  │   Body: {client_id}
+  │   Response: {device_auth_id, user_code, interval}
+  │
+  ├─ Display to user:
+  │   "Visit: https://auth.openai.com/codex/device"
+  │   "Enter code: XXXX-XXXX"
+  │
+  ├─ Poll: POST auth.openai.com/api/accounts/deviceauth/token
+  │   Body: {device_auth_id, user_code}
+  │   Wait: interval + 3s safety margin
+  │   Until 200 → {authorization_code, code_verifier}
+  │
+  ├─ Exchange: POST auth.openai.com/oauth/token
+  │   Body: grant_type=authorization_code, code, redirect_uri, client_id, code_verifier
+  │   Response: {access_token, refresh_token, id_token, expires_in}
+  │
+  ├─ Extract account_id from JWT claims (for org subscriptions)
+  └─ save_credentials() → .codex_credentials.json (0o600)
+
+Runtime:
+  ├─ _get_auth() → load + auto-refresh if expires_at < now
+  ├─ Headers: Authorization: Bearer, ChatGPT-Account-Id (if org)
+  └─ On 401: refresh_token() → retry
+```
+
+Token URL: `https://auth.openai.com/oauth/token`
+API endpoint: `https://chatgpt.com/backend-api/codex/responses`
+Allowed models: gpt-5.1-codex, gpt-5.2-codex, gpt-5.3-codex, gpt-5.1-codex-mini, gpt-5.1-codex-max
 
 ---
 
@@ -480,7 +538,9 @@ _send_streaming(message, session_key, user_content)
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `DISCORD_BOT_TOKEN` | **yes** | — | Discord bot token |
-| `CLAUDE_MODEL` | no | `claude-sonnet-4-20250514` | Claude model ID |
+| `PROVIDER` | no | `anthropic` | LLM provider: `anthropic` or `codex` |
+| `CLAUDE_MODEL` | no | `claude-sonnet-4-20250514` | Claude model ID (when PROVIDER=anthropic) |
+| `CODEX_MODEL` | no | `gpt-5.3-codex` | Codex model ID (when PROVIDER=codex) |
 | `MAX_HISTORY` | no | `20` | Max conversation turns kept in context |
 | `TOOLS_ENABLED` | no | `true` | Enable tool use |
 | `GITHUB_TOKEN` | no | — | GitHub PAT for gh CLI in exec tool |

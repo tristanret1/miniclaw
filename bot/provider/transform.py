@@ -104,10 +104,69 @@ def sanitize_for_anthropic(messages: list[Message]) -> list[Message]:
     return deduped
 
 
+def sanitize_for_codex(messages: list[Message]) -> list[Message]:
+    """Sanitize message history for the Codex Responses API.
+
+    Codex is more lenient than Anthropic but still requires:
+    1. Every function_call must have a matching function_call_output.
+    2. History should not start with an assistant message.
+    """
+    if not messages:
+        return messages
+
+    sanitized: list[Message] = []
+    i = 0
+    while i < len(messages):
+        msg = messages[i]
+
+        if msg.get("role") == "assistant":
+            content = msg.get("content", [])
+            has_tool_use = (
+                isinstance(content, list)
+                and any(b.get("type") == "tool_use" for b in content if isinstance(b, dict))
+            )
+
+            if has_tool_use:
+                # Must have a following tool_result
+                if i + 1 < len(messages):
+                    next_msg = messages[i + 1]
+                    next_content = next_msg.get("content", [])
+                    if (
+                        next_msg.get("role") == "user"
+                        and isinstance(next_content, list)
+                        and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in next_content)
+                    ):
+                        sanitized.append(msg)
+                        sanitized.append(next_msg)
+                        i += 2
+                        continue
+
+                # Drop orphan tool_use
+                log.warning("codex: dropping orphan tool_use at index %d", i)
+                i += 1
+                if i < len(messages):
+                    nc = messages[i].get("content", [])
+                    if isinstance(nc, list) and any(
+                        isinstance(b, dict) and b.get("type") == "tool_result" for b in nc
+                    ):
+                        i += 1
+                continue
+
+        sanitized.append(msg)
+        i += 1
+
+    # Ensure history starts with a user message
+    while sanitized and sanitized[0].get("role") != "user":
+        sanitized.pop(0)
+
+    return sanitized
+
+
 def sanitize(messages: list[Message], provider_id: str) -> list[Message]:
     """Route to the appropriate sanitizer for the given provider."""
     transformers = {
         "anthropic": sanitize_for_anthropic,
+        "codex": sanitize_for_codex,
     }
     fn = transformers.get(provider_id, lambda m: m)
     return fn(messages)

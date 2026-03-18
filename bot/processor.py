@@ -4,7 +4,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 
-from bot.config import SYSTEM_PROMPT, TOOLS_ENABLED
+from bot.config import PROVIDER, SYSTEM_PROMPT, TOOLS_ENABLED
 from bot.logger import get_logger
 from bot.memory import get_flush_prompt
 from bot.message import Content, extract_text
@@ -103,7 +103,7 @@ class StreamProcessor:
                     yield text
                 elif "tool_use" in str(e) or "tool_result" in str(e) or "400" in str(e):
                     old_len = len(history)
-                    history[:] = sanitize(history, "anthropic")
+                    history[:] = sanitize(history, PROVIDER)
                     log.warning(
                         "400 tool mismatch — sanitized history: %d -> %d messages, retrying",
                         old_len, len(history),
@@ -164,7 +164,7 @@ class StreamProcessor:
 
     async def _run_flush(self, history: list[dict]) -> None:
         """Background auto-flush: save conversation highlights to memory."""
-        flush_history = sanitize(history, "anthropic") + [
+        flush_history = sanitize(history, PROVIDER) + [
             {"role": "user", "content": get_flush_prompt()}
         ]
         tools = ALL_TOOLS if TOOLS_ENABLED else None
@@ -177,7 +177,7 @@ class StreamProcessor:
                     )
                 except RuntimeError as e:
                     if "400" in str(e) or "tool_use" in str(e) or "tool_result" in str(e):
-                        flush_history = sanitize(flush_history, "anthropic")
+                        flush_history = sanitize(flush_history, PROVIDER)
                         log.warning("flush: sanitized history after 400, retrying")
                         response = await self.provider.call(
                             flush_history, SYSTEM_PROMPT, tools=tools

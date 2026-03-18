@@ -15,21 +15,9 @@ def setup_claude():
 
 
 def setup_codex():
-    print("\n── OpenAI Codex Authorization ──")
-    codex_auth_path = Path.home() / ".codex" / "auth.json"
-    if codex_auth_path.exists():
-        import json
-        try:
-            data = json.loads(codex_auth_path.read_text())
-            token = data.get("tokens", {}).get("access_token")
-            if token:
-                print(f"✓ Found Codex credentials at {codex_auth_path}")
-                return
-        except Exception:
-            pass
-    print(f"No Codex credentials found at {codex_auth_path}")
-    print("Please run `codex` CLI to authenticate first, then re-run setup.")
-    raise SystemExit("Codex authentication required.")
+    print("\n── Codex Authorization (uses your ChatGPT subscription) ──")
+    from bot.codex_oauth import authorize_headless
+    authorize_headless()
 
 
 def setup_discord() -> str:
@@ -48,13 +36,17 @@ def setup_discord() -> str:
     return token
 
 
-def write_env(discord_token: str):
-    content = (
-        f"DISCORD_BOT_TOKEN={discord_token}\n"
-        f"CLAUDE_MODEL=claude-sonnet-4-20250514\n"
-        f"MAX_HISTORY=20\n"
-        f"SYSTEM_PROMPT=You are a helpful assistant.\n"
-    )
+def write_env(discord_token: str, provider: str):
+    lines = [
+        f"DISCORD_BOT_TOKEN={discord_token}",
+        f"PROVIDER={provider}",
+        f"MAX_HISTORY=20",
+    ]
+    if provider == "anthropic":
+        lines.append("CLAUDE_MODEL=claude-sonnet-4-20250514")
+    elif provider == "codex":
+        lines.append("CODEX_MODEL=gpt-5.3-codex")
+    content = "\n".join(lines) + "\n"
     ENV_PATH.write_text(content)
     os.chmod(ENV_PATH, 0o600)
     print(f"\n.env written to {ENV_PATH}")
@@ -69,15 +61,26 @@ def main():
             print("Setup cancelled.")
             return
 
-    # Step 1: Claude OAuth
-    setup_claude()
+    # Step 1: Choose provider
+    print("\nChoose LLM provider:")
+    print("  1. Claude (Anthropic OAuth — uses Claude subscription)")
+    print("  2. Codex (OpenAI OAuth — uses ChatGPT Pro/Plus subscription)")
+    print("  3. Both (set up both, choose active provider in .env)")
+    choice = input("\nEnter choice [1/2/3]: ").strip()
 
-    # Step 2: Codex OAuth
-    setup_codex()
+    provider = "anthropic"
+    if choice in ("1", "3"):
+        setup_claude()
+    if choice in ("2", "3"):
+        setup_codex()
+        if choice == "2":
+            provider = "codex"
+    if choice == "3":
+        provider = input("\nDefault provider? [anthropic/codex]: ").strip() or "anthropic"
 
-    # Step 3: Discord
-    discord_token = setup_discord()
-    write_env(discord_token)
+    # Step 2: Discord
+    # discord_token = setup_discord()
+    # write_env(discord_token, provider)
 
     print("\nSetup complete! Run: python main.py")
 

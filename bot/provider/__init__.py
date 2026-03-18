@@ -2,9 +2,11 @@
 
 from bot.provider.base import BaseProvider
 from bot.provider.anthropic import AnthropicProvider
+from bot.provider.codex import CodexProvider
 
 _PROVIDERS: dict[str, type[BaseProvider]] = {
     "anthropic": AnthropicProvider,
+    "codex": CodexProvider,
 }
 
 
@@ -17,6 +19,8 @@ def get_provider(provider_id: str, model: str) -> BaseProvider:
 
 
 def get_default_provider() -> BaseProvider:
-    """Get the default provider (Anthropic with configured model)."""
-    from bot.config import CLAUDE_MODEL
+    """Get the default provider based on PROVIDER env var."""
+    from bot.config import PROVIDER, CLAUDE_MODEL, CODEX_MODEL
+    if PROVIDER == "codex":
+        return get_provider("codex", CODEX_MODEL)
     return get_provider("anthropic", CLAUDE_MODEL)
