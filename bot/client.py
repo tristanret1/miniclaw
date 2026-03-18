@@ -218,25 +218,6 @@ async def on_message(message: discord.Message):
     if message.author == bot.user:
         return
 
-    # Record user info to memory (non-blocking)
-    try:
-        await _remember_user(message)
-    except Exception as e:
-        log.error("user memory error: %s", e)
-
-    # Auto-reply path (no debounce needed)
-    if should_auto_reply(message):
-        session_key = f"{message.channel.id}:{message.author.id}"
-        async with message.channel.typing():
-            try:
-                auto_reply_prompt = f"[自动回复模式] 用户消息: {message.content}"
-                reply_text = await llm.reply(session_key, auto_reply_prompt)
-                for i in range(0, len(reply_text), 2000):
-                    await message.reply(reply_text[i : i + 2000])
-            except Exception as e:
-                log.error("Auto-reply error: %s", e)
-        return
-
     # DM or @mention path — debounce to wait for edits
     if not _should_handle(message):
         return

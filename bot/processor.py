@@ -93,6 +93,7 @@ class StreamProcessor:
                         stop_reason = event.get("delta", {}).get("stop_reason")
 
             except RuntimeError as e:
+                log.error("LLM call error on round %d: %s", round_num, e)
                 if "Auth expired" in str(e):
                     response = await self.provider.call(
                         history, SYSTEM_PROMPT, tools=tools
