@@ -1,0 +1,22 @@
+"""Provider registry and factory."""
+
+from bot.provider.base import BaseProvider
+from bot.provider.anthropic import AnthropicProvider
+
+_PROVIDERS: dict[str, type[BaseProvider]] = {
+    "anthropic": AnthropicProvider,
+}
+
+
+def get_provider(provider_id: str, model: str) -> BaseProvider:
+    """Get a Provider instance by provider_id and model."""
+    cls = _PROVIDERS.get(provider_id)
+    if cls is None:
+        raise ValueError(f"Unknown provider: {provider_id}")
+    return cls(model=model)
+
+
+def get_default_provider() -> BaseProvider:
+    """Get the default provider (Anthropic with configured model)."""
+    from bot.config import CLAUDE_MODEL
+    return get_provider("anthropic", CLAUDE_MODEL)

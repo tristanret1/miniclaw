@@ -1,0 +1,33 @@
+[project]
+name = "miniclaw"
+version = "0.2.0"
+requires-python = ">=3.13"
+dependencies = [
+    "discord.py>=2.3",
+    "httpx[http2]",
+    "python-dotenv",
+    "claude-agent-sdk>=0.1.48",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = [
+    "ignore::DeprecationWarning:discord.*",
+]
+
+[tool.coverage.run]
+source = ["bot"]
+omit = ["bot/acp.py"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 60

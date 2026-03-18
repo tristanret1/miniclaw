@@ -16,6 +16,8 @@ from bot.client import bot
 
 
 async def main():
+    if not DISCORD_BOT_TOKEN:
+        raise SystemExit("DISCORD_BOT_TOKEN not set. Run: python setup.py")
     try:
         await bot.start(DISCORD_BOT_TOKEN)
     finally:

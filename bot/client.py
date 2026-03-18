@@ -3,7 +3,8 @@ import random
 from datetime import datetime
 
 import discord
-from bot.claude import build_user_content, get_reply, get_reply_stream
+from bot import llm
+from bot.message import build_user_content
 from bot.config import AUTO_REPLY_ENABLED, AUTO_REPLY_CHANNELS, AUTO_REPLY_CHANCE, AUTO_REPLY_KEYWORDS
 from bot import memory
 from bot.logger import get_logger
@@ -118,7 +119,7 @@ async def _send_streaming(message: discord.Message, session_key: str, user_conte
     last_edit_len = 0          # chars that were displayed at the last edit
     stream_start = asyncio.get_event_loop().time()
 
-    async for chunk in get_reply_stream(session_key, user_content):
+    async for chunk in llm.stream(session_key, user_content):
         buffer += chunk
         now = asyncio.get_event_loop().time()
 
@@ -192,9 +193,9 @@ async def _process_message(message: discord.Message) -> None:
 
     async with message.channel.typing():
         try:
-            reply = await get_reply(session_key, user_content)
-            for i in range(0, len(reply), 2000):
-                await message.reply(reply[i : i + 2000])
+            reply_text = await llm.reply(session_key, user_content)
+            for i in range(0, len(reply_text), 2000):
+                await message.reply(reply_text[i : i + 2000])
         except Exception as e:
             log.error("reply error: %s", e)
             await message.reply(f"Error: {e}")
@@ -229,9 +230,9 @@ async def on_message(message: discord.Message):
         async with message.channel.typing():
             try:
                 auto_reply_prompt = f"[自动回复模式] 用户消息: {message.content}"
-                reply = await get_reply(session_key, auto_reply_prompt)
-                for i in range(0, len(reply), 2000):
-                    await message.reply(reply[i : i + 2000])
+                reply_text = await llm.reply(session_key, auto_reply_prompt)
+                for i in range(0, len(reply_text), 2000):
+                    await message.reply(reply_text[i : i + 2000])
             except Exception as e:
                 log.error("Auto-reply error: %s", e)
         return

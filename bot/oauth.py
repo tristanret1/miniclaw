@@ -119,3 +119,6 @@ def refresh_token(creds: dict) -> dict:
     tokens = resp.json()
     save_credentials(tokens)
     return tokens
+
+if __name__ == "__main__":
+    authorize()

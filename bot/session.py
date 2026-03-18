@@ -1,0 +1,139 @@
+"""Session management — in-memory cache + SQLite persistence."""
+
+import json
+import sqlite3
+from pathlib import Path
+
+from bot.config import MAX_HISTORY, WORKSPACE_DIR
+from bot.logger import get_logger
+from bot.message import Content, Message
+from bot.provider.transform import sanitize
+
+log = get_logger("session")
+
+DB_PATH = WORKSPACE_DIR / "sessions.db"
+
+# Reusable connection (SQLite is single-threaded anyway)
+_conn: sqlite3.Connection | None = None
+
+
+def _get_db() -> sqlite3.Connection:
+    global _conn
+    if _conn is None:
+        _conn = sqlite3.connect(str(DB_PATH))
+        _conn.row_factory = sqlite3.Row
+        _conn.execute("PRAGMA journal_mode=WAL")
+        _ensure_schema(_conn)
+    return _conn
+
+
+def _ensure_schema(conn: sqlite3.Connection) -> None:
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_key TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_messages_session
+            ON messages(session_key, id);
+    """)
+    conn.commit()
+
+
+def _load_from_db(session_key: str, limit: int) -> list[Message]:
+    """Load the most recent messages for a session from DB."""
+    conn = _get_db()
+    rows = conn.execute(
+        "SELECT role, content FROM ("
+        "  SELECT role, content, id FROM messages"
+        "  WHERE session_key = ? ORDER BY id DESC LIMIT ?"
+        ") ORDER BY id ASC",
+        (session_key, limit),
+    ).fetchall()
+
+    history: list[Message] = []
+    for row in rows:
+        try:
+            content = json.loads(row["content"])
+        except (json.JSONDecodeError, TypeError):
+            content = row["content"]
+        history.append({"role": row["role"], "content": content})
+
+    if history:
+        log.info("loaded %d messages for session %s", len(history), session_key)
+    return history
+
+
+def _persist(session_key: str, role: str, content: Content) -> None:
+    """Persist a single message to DB."""
+    if isinstance(content, (list, dict)):
+        content_str = json.dumps(content, ensure_ascii=False)
+    else:
+        content_str = content
+
+    conn = _get_db()
+    conn.execute(
+        "INSERT INTO messages (session_key, role, content) VALUES (?, ?, ?)",
+        (session_key, role, content_str),
+    )
+    conn.commit()
+
+
+def clear_session(session_key: str) -> int:
+    """Delete all messages for a session. Returns count deleted."""
+    conn = _get_db()
+    cur = conn.execute("DELETE FROM messages WHERE session_key = ?", (session_key,))
+    conn.commit()
+    log.info("cleared %d messages for session %s", cur.rowcount, session_key)
+    return cur.rowcount
+
+
+class SessionManager:
+    """Session management: in-memory cache + SQLite persistence."""
+
+    def __init__(self):
+        self._cache: dict[str, list[Message]] = {}
+        self._flushed: set[str] = set()
+
+    def get_history(self, session_key: str) -> list[Message]:
+        """Get session history, loading from DB on first access."""
+        if session_key not in self._cache:
+            raw = _load_from_db(session_key, MAX_HISTORY * 2)
+            sanitized = sanitize(raw, "anthropic")
+            if len(raw) != len(sanitized):
+                log.warning(
+                    "sanitized session %s: %d -> %d messages",
+                    session_key, len(raw), len(sanitized),
+                )
+            self._cache[session_key] = sanitized
+        return self._cache[session_key]
+
+    def append(self, session_key: str, role: str, content: Content) -> None:
+        """Append a message to cache + DB."""
+        history = self.get_history(session_key)
+        history.append({"role": role, "content": content})
+        _persist(session_key, role, content)
+
+    def trim(self, session_key: str) -> None:
+        """Trim history if it exceeds the max limit."""
+        history = self.get_history(session_key)
+        if len(history) > MAX_HISTORY * 2:
+            history[:] = sanitize(history[-(MAX_HISTORY * 2):], "anthropic")
+
+    def clear(self, session_key: str) -> int:
+        """Clear session from cache and DB."""
+        self._cache.pop(session_key, None)
+        self._flushed.discard(session_key)
+        return clear_session(session_key)
+
+    def should_flush(self, session_key: str) -> bool:
+        """Check if auto-flush should trigger for this session."""
+        if session_key in self._flushed:
+            return False
+        from bot.memory import should_flush as check_flush
+        return check_flush(self.get_history(session_key))
+
+    def mark_flushed(self, session_key: str) -> None:
+        self._flushed.add(session_key)

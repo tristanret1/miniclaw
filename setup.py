@@ -14,6 +14,24 @@ def setup_claude():
     authorize()
 
 
+def setup_codex():
+    print("\n── OpenAI Codex Authorization ──")
+    codex_auth_path = Path.home() / ".codex" / "auth.json"
+    if codex_auth_path.exists():
+        import json
+        try:
+            data = json.loads(codex_auth_path.read_text())
+            token = data.get("tokens", {}).get("access_token")
+            if token:
+                print(f"✓ Found Codex credentials at {codex_auth_path}")
+                return
+        except Exception:
+            pass
+    print(f"No Codex credentials found at {codex_auth_path}")
+    print("Please run `codex` CLI to authenticate first, then re-run setup.")
+    raise SystemExit("Codex authentication required.")
+
+
 def setup_discord() -> str:
     print("\n── Discord Bot Token ──")
     print(f"1. Opening {DISCORD_DEV_URL}")
@@ -54,7 +72,10 @@ def main():
     # Step 1: Claude OAuth
     setup_claude()
 
-    # Step 2: Discord
+    # Step 2: Codex OAuth
+    setup_codex()
+
+    # Step 3: Discord
     discord_token = setup_discord()
     write_env(discord_token)
 
