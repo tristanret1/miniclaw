@@ -5,7 +5,7 @@
 set -euo pipefail
 
 PROFILE="sen"
-INSTANCE_ID="i-01802f965da921cd0"
+INSTANCE_ID="i-041a7fb83cf05fe63"
 REPO="git@github.com:shou2077/miniclaw.git"
 APP_DIR="/home/ubuntu/miniclaw"
 SERVICE_NAME="miniclaw"
@@ -19,45 +19,76 @@ log() { echo -e "${GREEN}[deploy]${NC} $1"; }
 warn() { echo -e "${YELLOW}[deploy]${NC} $1"; }
 
 run_remote() {
+    local cmd="$1"
     local cmd_id
-    cmd_id=$(aws ssm send-command \
+    local status
+    local i
+
+    [[ -z "$PROFILE" ]] && { echo "PROFILE is empty" >&2; return 1; }
+    [[ -z "$INSTANCE_ID" ]] && { echo "INSTANCE_ID is empty" >&2; return 1; }
+    [[ -z "$cmd" ]] && { echo "Command is empty" >&2; return 1; }
+
+    printf 'Running remote command: %q\n' "$cmd"
+
+    if ! cmd_id=$(aws ssm send-command \
         --profile "$PROFILE" \
         --instance-ids "$INSTANCE_ID" \
         --document-name "AWS-RunShellScript" \
-        --parameters "commands=[$1]" \
+        --parameters commands="$cmd" \
         --timeout-seconds 120 \
         --output text \
-        --query "Command.CommandId" 2>&1)
+        --query "Command.CommandId"); then
+        echo "Failed to send command" >&2
+        return 1
+    fi
+
+    echo "Command ID: $cmd_id"
+    echo "Running command..."
 
     sleep 2
-    # Poll until done
-    for i in {1..30}; do
-        local status
-        status=$(aws ssm get-command-invocation \
+
+    for i in {1..70}; do
+        if ! status=$(aws ssm get-command-invocation \
             --profile "$PROFILE" \
             --instance-id "$INSTANCE_ID" \
             --command-id "$cmd_id" \
-            --query "Status" --output text 2>&1)
-
-        if [[ "$status" == "Success" ]]; then
-            aws ssm get-command-invocation \
-                --profile "$PROFILE" \
-                --instance-id "$INSTANCE_ID" \
-                --command-id "$cmd_id" \
-                --query "StandardOutputContent" --output text 2>&1
-            return 0
-        elif [[ "$status" == "Failed" ]]; then
-            warn "Command failed!"
-            aws ssm get-command-invocation \
-                --profile "$PROFILE" \
-                --instance-id "$INSTANCE_ID" \
-                --command-id "$cmd_id" \
-                --query "{stdout:StandardOutputContent,stderr:StandardErrorContent}" --output json 2>&1
-            return 1
+            --query "Status" \
+            --output text 2>/dev/null); then
+            sleep 2
+            continue
         fi
+
+        case "$status" in
+            Success)
+                aws ssm get-command-invocation \
+                    --profile "$PROFILE" \
+                    --instance-id "$INSTANCE_ID" \
+                    --command-id "$cmd_id" \
+                    --query "StandardOutputContent" \
+                    --output text
+                return 0
+                ;;
+            Failed|TimedOut|Cancelled|Cancelling)
+                echo "Command ended with status: $status" >&2
+                aws ssm get-command-invocation \
+                    --profile "$PROFILE" \
+                    --instance-id "$INSTANCE_ID" \
+                    --command-id "$cmd_id" \
+                    --query "{stdout:StandardOutputContent,stderr:StandardErrorContent}" \
+                    --output json
+                return 1
+                ;;
+            Pending|InProgress|Delayed)
+                ;;
+            *)
+                echo "Unknown status: $status" >&2
+                ;;
+        esac
+
         sleep 2
     done
-    warn "Command timed out"
+
+    echo "Command polling timed out" >&2
     return 1
 }
 

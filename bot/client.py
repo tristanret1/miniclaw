@@ -5,7 +5,8 @@ from datetime import datetime
 import discord
 from bot import llm
 from bot.message import build_user_content
-from bot.config import AUTO_REPLY_ENABLED, AUTO_REPLY_CHANNELS, AUTO_REPLY_CHANCE, AUTO_REPLY_KEYWORDS
+from bot.config import AUTO_REPLY_ENABLED, AUTO_REPLY_CHANNELS, AUTO_REPLY_CHANCE, AUTO_REPLY_KEYWORDS, get_loaded_skills
+from bot.skills import match_skill_command, build_skill_user_message, build_skill_command_list
 from bot import memory
 from bot.logger import get_logger
 
@@ -71,6 +72,14 @@ async def on_ready():
             print(f"Auto-reply channels: {AUTO_REPLY_CHANNELS}")
         if AUTO_REPLY_KEYWORDS:
             print(f"Auto-reply keywords: {AUTO_REPLY_KEYWORDS}")
+
+    # Start cron scheduler
+    from bot.config import CRON_ENABLED
+    if CRON_ENABLED:
+        from bot.cron import get_scheduler
+        scheduler = get_scheduler()
+        await scheduler.start(bot)
+        print("Cron scheduler started")
 
 
 def _extract_image_urls(message: discord.Message) -> list[str]:
@@ -184,6 +193,21 @@ async def _process_message(message: discord.Message) -> None:
 
     if not content and not image_urls:
         return
+
+    # Handle /skills list command
+    if content.strip().lower() in ("/skills", "/skill"):
+        skills = get_loaded_skills()
+        await message.reply(build_skill_command_list(skills))
+        return
+
+    # Handle /skill-name commands
+    if content.startswith("/"):
+        skills = get_loaded_skills()
+        result = match_skill_command(content, skills)
+        if result:
+            skill, args = result
+            log.info("skill command: /%s args=%r", skill.name, args[:100] if args else "")
+            content = build_skill_user_message(skill, args)
 
     session_key = f"{message.channel.id}:{message.author.id}"
     user_content = build_user_content(content, image_urls if image_urls else None)
