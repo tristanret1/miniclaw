@@ -8,3 +8,4 @@ venv/
 logs/
 workspace/memory/
 workspace/sessions.db*
+scripts/deploy.config

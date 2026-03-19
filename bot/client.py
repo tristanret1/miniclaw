@@ -12,11 +12,6 @@ from bot.logger import get_logger
 
 log = get_logger("client")
 
-# ── Message debounce ─────────────────────────────────────────────────────────
-# Wait for edits before processing. Key: message.id → asyncio.Task
-_MSG_DEBOUNCE_DELAY = 1.5  # seconds to wait for edits
-_pending_replies: dict[int, asyncio.Task] = {}
-
 # ── User memory cache ────────────────────────────────────────────────────────
 # Tracks {user_id: (username, display_name)} to avoid duplicate saves
 _known_users: dict[int, tuple[str, str]] = {}
@@ -187,7 +182,7 @@ def _extract_content(message: discord.Message) -> str:
 
 
 async def _process_message(message: discord.Message) -> None:
-    """Process a message after debounce delay (edits settled)."""
+    """Process a message and reply."""
     content = _extract_content(message)
     image_urls = _extract_image_urls(message)
 
@@ -225,48 +220,12 @@ async def _process_message(message: discord.Message) -> None:
             await message.reply(f"Error: {e}")
 
 
-async def _debounced_reply(message: discord.Message) -> None:
-    """Wait for potential edits before processing the message."""
-    try:
-        await asyncio.sleep(_MSG_DEBOUNCE_DELAY)
-        # If we get here, no edit cancelled us — process the message
-        await _process_message(message)
-    except asyncio.CancelledError:
-        log.debug("debounce cancelled for message %d (edited)", message.id)
-    finally:
-        _pending_replies.pop(message.id, None)
-
-
 @bot.event
 async def on_message(message: discord.Message):
     if message.author == bot.user:
         return
 
-    # DM or @mention path — debounce to wait for edits
     if not _should_handle(message):
         return
 
-    # Cancel any existing pending reply for this message
-    old_task = _pending_replies.pop(message.id, None)
-    if old_task:
-        old_task.cancel()
-
-    task = asyncio.create_task(_debounced_reply(message))
-    _pending_replies[message.id] = task
-
-
-@bot.event
-async def on_message_edit(before: discord.Message, after: discord.Message):
-    """If a pending message is edited, restart the debounce timer."""
-    if after.author == bot.user:
-        return
-    if not _should_handle(after):
-        return
-
-    # Only restart if we have a pending (not-yet-processed) reply
-    old_task = _pending_replies.pop(after.id, None)
-    if old_task:
-        old_task.cancel()
-        log.info("message %d edited, restarting debounce", after.id)
-        task = asyncio.create_task(_debounced_reply(after))
-        _pending_replies[after.id] = task
+    await _process_message(message)
