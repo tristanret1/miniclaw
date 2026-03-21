@@ -11,15 +11,22 @@ if not env_path.exists() or not creds_path.exists():
 
 import asyncio
 import signal
-from bot.config import DISCORD_BOT_TOKEN
+from bot.config import DISCORD_BOT_TOKEN, SMS_ENABLED
 from bot.client import bot
 
 
 async def main():
     if not DISCORD_BOT_TOKEN:
         raise SystemExit("DISCORD_BOT_TOKEN not set. Run: python setup.py")
+
+    tasks = [bot.start(DISCORD_BOT_TOKEN)]
+
+    if SMS_ENABLED:
+        from bot.sms_gateway import start_sms_server
+        tasks.append(start_sms_server())
+
     try:
-        await bot.start(DISCORD_BOT_TOKEN)
+        await asyncio.gather(*tasks)
     finally:
         from bot.acp import shutdown
         await shutdown()

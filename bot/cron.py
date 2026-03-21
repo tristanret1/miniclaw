@@ -53,6 +53,7 @@ class CronJob:
     session_mode: str           # "isolated" | "persistent"
     context: str                # extra system instructions
     model: str                  # model override (empty = global)
+    delivery_channel: str       # "discord" | "sms"
 
 
 # ── Schedule computation ─────────────────────────────────────────────────────
@@ -137,10 +138,18 @@ def _init_db() -> sqlite3.Connection:
             consecutive_errors INTEGER NOT NULL DEFAULT 0,
             session_mode TEXT NOT NULL DEFAULT 'isolated',
             context TEXT NOT NULL DEFAULT '',
-            model TEXT NOT NULL DEFAULT ''
+            model TEXT NOT NULL DEFAULT '',
+            delivery_channel TEXT NOT NULL DEFAULT 'discord'
         )
     """)
     conn.commit()
+
+    # Migration: add delivery_channel if missing (existing DBs)
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
+    if "delivery_channel" not in cols:
+        conn.execute("ALTER TABLE cron_jobs ADD COLUMN delivery_channel TEXT NOT NULL DEFAULT 'discord'")
+        conn.commit()
+
     return conn
 
 
@@ -163,6 +172,7 @@ def _row_to_job(row: sqlite3.Row) -> CronJob:
         session_mode=row["session_mode"],
         context=row["context"],
         model=row["model"],
+        delivery_channel=row["delivery_channel"] if "delivery_channel" in row.keys() else "discord",
     )
 
 
@@ -188,6 +198,7 @@ def create_job(
     session_mode: str = "isolated",
     context: str = "",
     model: str = "",
+    delivery_channel: str = "discord",
 ) -> str:
     """Create a new cron job. Returns confirmation string."""
     tz = timezone or CRON_TIMEZONE
@@ -202,6 +213,9 @@ def create_job(
     if session_mode not in ("isolated", "persistent"):
         session_mode = "isolated"
 
+    if delivery_channel not in ("discord", "sms"):
+        delivery_channel = "discord"
+
     job_id = uuid.uuid4().hex[:12]
     now_iso = datetime.now(ZoneInfo(tz)).isoformat(timespec="seconds")
 
@@ -210,10 +224,10 @@ def create_job(
         """INSERT INTO cron_jobs
            (id, name, schedule_type, schedule_value, timezone, payload, channel_id,
             enabled, created_at, next_run_at, consecutive_errors,
-            session_mode, context, model)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0, ?, ?, ?)""",
+            session_mode, context, model, delivery_channel)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0, ?, ?, ?, ?)""",
         (job_id, name, schedule_type, schedule_value, tz, payload, channel_id,
-         now_iso, next_run, session_mode, context, model),
+         now_iso, next_run, session_mode, context, model, delivery_channel),
     )
     db.commit()
 
@@ -420,18 +434,27 @@ class CronScheduler:
             from bot import llm
             reply = await llm.reply(session_key, job.payload)
 
-            # Deliver to Discord
-            if self._bot and reply.strip():
-                try:
-                    channel = self._bot.get_channel(int(job.channel_id))
-                    if channel is None:
-                        channel = await self._bot.fetch_channel(int(job.channel_id))
-                    for i in range(0, len(reply), 2000):
-                        await channel.send(reply[i : i + 2000])
-                    log.info("job %s delivered to channel %s (%d chars)", job.name, job.channel_id, len(reply))
-                except Exception as e:
-                    log.error("job %s delivery failed: %s", job.name, e)
-                    raise
+            # Deliver result
+            if reply.strip():
+                if job.delivery_channel == "sms":
+                    try:
+                        from bot.tools import run_sms
+                        result = await run_sms(to=job.channel_id, message=reply)
+                        log.info("job %s delivered via SMS to %s: %s", job.name, job.channel_id, result)
+                    except Exception as e:
+                        log.error("job %s SMS delivery failed: %s", job.name, e)
+                        raise
+                elif self._bot:
+                    try:
+                        channel = self._bot.get_channel(int(job.channel_id))
+                        if channel is None:
+                            channel = await self._bot.fetch_channel(int(job.channel_id))
+                        for i in range(0, len(reply), 2000):
+                            await channel.send(reply[i : i + 2000])
+                        log.info("job %s delivered to channel %s (%d chars)", job.name, job.channel_id, len(reply))
+                    except Exception as e:
+                        log.error("job %s delivery failed: %s", job.name, e)
+                        raise
 
             return reply
 

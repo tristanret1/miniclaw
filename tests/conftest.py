@@ -29,6 +29,9 @@ def pytest_configure(config):
         "AUTO_REPLY_KEYWORDS": "",
         "PROVIDER": "anthropic",
         "CODEX_MODEL": "gpt-5.3-codex",
+        "SMS_ENABLED": "false",
+        "SMS_WEBHOOK_PORT": "8080",
+        "SMS_WEBHOOK_URL": "",
     }
     for key, val in defaults.items():
         os.environ.setdefault(key, val)

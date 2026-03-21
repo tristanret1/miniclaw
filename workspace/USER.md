@@ -4,8 +4,9 @@
 - **What to call them:** Tristan
 - **Pronouns:**
 - **Timezone:** America/Vancouver (Pacific)
+- **MBTI:** INTP
 - **Notes:** Based in Vancouver
 
 ## Context
 
-_(Getting to know Tristan — will fill in as we go.)_
+- **Hobbies / Outdoor:** Skiing 🎿, Hiking 🥾, Camping ⛺

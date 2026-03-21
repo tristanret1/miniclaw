@@ -18,6 +18,11 @@ ACP_CWD = os.getenv("ACP_CWD", "")  # default working directory for Claude Code 
 # GitHub token for gh CLI and git push
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 
+# Twilio (for phone_call tool)
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "")  # E.164 format, e.g. +14155551234
+
 WORKSPACE_DIR = Path(__file__).parent.parent / "workspace"
 SKILLS_DIR = Path(__file__).parent.parent / "skills"
 
@@ -61,6 +66,11 @@ SYSTEM_PROMPT = build_system_prompt()
 CRON_ENABLED = os.getenv("CRON_ENABLED", "true").lower() in ("true", "1", "yes")
 CRON_TIMEZONE = os.getenv("CRON_TIMEZONE", "America/Vancouver")
 CRON_MAX_CONCURRENT = int(os.getenv("CRON_MAX_CONCURRENT", "5"))
+
+# SMS gateway (Twilio inbound webhook)
+SMS_ENABLED = os.getenv("SMS_ENABLED", "false").lower() in ("true", "1", "yes")
+SMS_WEBHOOK_PORT = int(os.getenv("SMS_WEBHOOK_PORT", "8080"))
+SMS_WEBHOOK_URL = os.getenv("SMS_WEBHOOK_URL", "")  # public URL for Twilio signature validation
 
 # Auto-reply settings
 AUTO_REPLY_ENABLED = os.getenv("AUTO_REPLY_ENABLED", "false").lower() in ("true", "1", "yes")
