@@ -22,7 +22,7 @@ WORKSPACE_DIR = Path(__file__).parent.parent / "workspace"
 SKILLS_DIR = Path(__file__).parent.parent / "skills"
 
 # Bootstrap files injected into system prompt, same order as openclaw
-_BOOTSTRAP_FILES = ["SOUL.md", "IDENTITY.md"]
+_BOOTSTRAP_FILES = ["SOUL.md", "IDENTITY.md", "USER.md", "MEMORY.md"]
 
 
 def build_system_prompt() -> str:
