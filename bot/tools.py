@@ -196,8 +196,8 @@ CRON_CREATE_TOOL = {
             },
             "delivery_channel": {
                 "type": "string",
-                "enum": ["discord", "sms"],
-                "description": "Delivery channel: 'discord' (default) sends to Discord channel_id, 'sms' sends SMS to channel_id (E.164 phone number).",
+                "enum": ["discord", "sms", "imessage"],
+                "description": "Delivery channel: 'discord' (default) sends to Discord channel_id, 'sms' sends SMS via Twilio, 'imessage' sends via iMessage. For sms/imessage, channel_id should be E.164 phone number or Apple ID.",
             },
         },
         "required": ["name", "schedule_type", "schedule_value", "payload", "channel_id"],
@@ -260,6 +260,29 @@ PHONE_CALL_TOOL = {
     },
 }
 
+IMESSAGE_SEND_TOOL = {
+    "name": "imessage_send",
+    "description": (
+        "Send an iMessage to a phone number or Apple ID email. "
+        "Requires the imsg CLI tool to be installed on the host Mac. "
+        "Use this when the user asks to send an iMessage."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "to": {
+                "type": "string",
+                "description": "Recipient phone number (E.164) or Apple ID email.",
+            },
+            "message": {
+                "type": "string",
+                "description": "The message to send.",
+            },
+        },
+        "required": ["to", "message"],
+    },
+}
+
 SMS_TOOL = {
     "name": "sms",
     "description": (
@@ -285,6 +308,7 @@ SMS_TOOL = {
 ALL_TOOLS = [
     EXEC_TOOL, MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL, CLAUDE_CODE_TOOL,
     CRON_CREATE_TOOL, CRON_LIST_TOOL, CRON_DELETE_TOOL, PHONE_CALL_TOOL, SMS_TOOL,
+    IMESSAGE_SEND_TOOL,
 ]  # DISCORD_SEND_TOOL
 
 
@@ -513,5 +537,11 @@ async def handle_tool_call(tool_name: str, tool_input: dict) -> str:
             message=tool_input["message"],
             language=tool_input.get("language", "zh-CN"),
         )
+    if tool_name == "imessage_send":
+        from bot.imessage_gateway import get_gateway_client, send_imessage, run_imessage_send
+        client = get_gateway_client()
+        if client:
+            return await send_imessage(client, to=tool_input["to"], message=tool_input["message"])
+        return await run_imessage_send(to=tool_input["to"], message=tool_input["message"])
     log.warning("unknown tool called: %s", tool_name)
     return f"Unknown tool: {tool_name}"

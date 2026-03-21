@@ -32,6 +32,11 @@ def pytest_configure(config):
         "SMS_ENABLED": "false",
         "SMS_WEBHOOK_PORT": "8080",
         "SMS_WEBHOOK_URL": "",
+        "IMESSAGE_ENABLED": "false",
+        "IMESSAGE_CLI_PATH": "imsg",
+        "IMESSAGE_DB_PATH": "",
+        "IMESSAGE_ALLOW_FROM": "",
+        "IMESSAGE_SERVICE": "auto",
     }
     for key, val in defaults.items():
         os.environ.setdefault(key, val)

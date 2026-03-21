@@ -72,6 +72,13 @@ SMS_ENABLED = os.getenv("SMS_ENABLED", "false").lower() in ("true", "1", "yes")
 SMS_WEBHOOK_PORT = int(os.getenv("SMS_WEBHOOK_PORT", "8080"))
 SMS_WEBHOOK_URL = os.getenv("SMS_WEBHOOK_URL", "")  # public URL for Twilio signature validation
 
+# iMessage gateway (via imsg CLI)
+IMESSAGE_ENABLED = os.getenv("IMESSAGE_ENABLED", "false").lower() in ("true", "1", "yes")
+IMESSAGE_CLI_PATH = os.getenv("IMESSAGE_CLI_PATH", "imsg")  # path to imsg binary
+IMESSAGE_DB_PATH = os.getenv("IMESSAGE_DB_PATH", "")  # path to Messages/chat.db (optional)
+IMESSAGE_ALLOW_FROM = [s.strip() for s in os.getenv("IMESSAGE_ALLOW_FROM", "").split(",") if s.strip()]
+IMESSAGE_SERVICE = os.getenv("IMESSAGE_SERVICE", "auto")  # "imessage", "sms", or "auto"
+
 # Auto-reply settings
 AUTO_REPLY_ENABLED = os.getenv("AUTO_REPLY_ENABLED", "false").lower() in ("true", "1", "yes")
 AUTO_REPLY_CHANNELS = os.getenv("AUTO_REPLY_CHANNELS", "").split(",")  # Channel IDs where auto-reply is allowed

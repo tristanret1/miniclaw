@@ -213,7 +213,7 @@ def create_job(
     if session_mode not in ("isolated", "persistent"):
         session_mode = "isolated"
 
-    if delivery_channel not in ("discord", "sms"):
+    if delivery_channel not in ("discord", "sms", "imessage"):
         delivery_channel = "discord"
 
     job_id = uuid.uuid4().hex[:12]
@@ -443,6 +443,18 @@ class CronScheduler:
                         log.info("job %s delivered via SMS to %s: %s", job.name, job.channel_id, result)
                     except Exception as e:
                         log.error("job %s SMS delivery failed: %s", job.name, e)
+                        raise
+                elif job.delivery_channel == "imessage":
+                    try:
+                        from bot.imessage_gateway import get_gateway_client, send_imessage, run_imessage_send
+                        client = get_gateway_client()
+                        if client:
+                            result = await send_imessage(client, to=job.channel_id, message=reply)
+                        else:
+                            result = await run_imessage_send(to=job.channel_id, message=reply)
+                        log.info("job %s delivered via iMessage to %s: %s", job.name, job.channel_id, result)
+                    except Exception as e:
+                        log.error("job %s iMessage delivery failed: %s", job.name, e)
                         raise
                 elif self._bot:
                     try:

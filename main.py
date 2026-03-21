@@ -11,7 +11,7 @@ if not env_path.exists() or not creds_path.exists():
 
 import asyncio
 import signal
-from bot.config import DISCORD_BOT_TOKEN, SMS_ENABLED
+from bot.config import DISCORD_BOT_TOKEN, SMS_ENABLED, IMESSAGE_ENABLED
 from bot.client import bot
 
 
@@ -24,6 +24,10 @@ async def main():
     if SMS_ENABLED:
         from bot.sms_gateway import start_sms_server
         tasks.append(start_sms_server())
+
+    if IMESSAGE_ENABLED:
+        from bot.imessage_gateway import start_imessage_gateway
+        tasks.append(start_imessage_gateway())
 
     try:
         await asyncio.gather(*tasks)
