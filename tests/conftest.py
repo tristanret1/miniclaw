@@ -49,13 +49,13 @@ def session_db(tmp_path, monkeypatch):
     """Redirect session DB to a temp file."""
     import bot.session as session_mod
     db_path = tmp_path / "sessions.db"
-    monkeypatch.setattr(session_mod, "DB_PATH", db_path)
-    monkeypatch.setattr(session_mod, "_conn", None)
+    monkeypatch.setattr(session_mod, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(session_mod, "_conns", {})
     yield db_path
-    # Reset global connection after test
-    if session_mod._conn is not None:
-        session_mod._conn.close()
-        session_mod._conn = None
+    # Reset global connections after test
+    for conn in session_mod._conns.values():
+        conn.close()
+    session_mod._conns.clear()
 
 
 @pytest.fixture
@@ -66,7 +66,7 @@ def memory_db(tmp_path, monkeypatch):
     mem_dir = tmp_path / "memory"
     mem_dir.mkdir()
     monkeypatch.setattr(memory_mod, "DB_PATH", db_path)
-    monkeypatch.setattr(memory_mod, "MEMORY_DIR", mem_dir)
+    monkeypatch.setattr(memory_mod, "DEFAULT_MEMORY_DIR", mem_dir)
     yield db_path, mem_dir
 
 

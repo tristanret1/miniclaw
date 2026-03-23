@@ -4,6 +4,7 @@ from datetime import datetime
 
 import discord
 from bot import llm
+from bot.agent import Agent
 from bot.message import build_user_content
 from bot.config import AUTO_REPLY_ENABLED, AUTO_REPLY_CHANNELS, AUTO_REPLY_CHANCE, AUTO_REPLY_KEYWORDS, get_loaded_skills
 from bot.skills import match_skill_command, build_skill_user_message, build_skill_command_list
@@ -16,40 +17,6 @@ log = get_logger("client")
 # Tracks {user_id: (username, display_name)} to avoid duplicate saves
 _known_users: dict[int, tuple[str, str]] = {}
 
-
-async def _remember_user(message: discord.Message) -> None:
-    """Save user info to memory if new or name changed."""
-    user = message.author
-    uid = user.id
-    username = str(user)           # e.g. "alice#0" or "alice"
-    display_name = user.display_name  # server nickname or global display name
-
-    cached = _known_users.get(uid)
-    if cached and cached == (username, display_name):
-        return  # no change, skip
-
-    _known_users[uid] = (username, display_name)
-
-    channel_id = message.channel.id
-    timestamp = datetime.now().isoformat(timespec="seconds")
-    content = (
-        f"用户信息: ID={uid}, 用户名={username}, "
-        f"显示名={display_name}, 频道={channel_id}, 时间={timestamp}"
-    )
-    tags = ["user_profile"]
-
-    try:
-        result = memory.save(content=content, tags=tags, source="system")
-        action = "updated" if cached else "recorded"
-        log.info("user memory %s: %s (%s) → %s", action, username, display_name, result)
-    except Exception as e:
-        log.error("failed to save user memory for %s: %s", username, e)
-
-intents = discord.Intents.default()
-intents.message_content = True
-
-bot = discord.Client(intents=intents)
-
 # Supported image MIME types for Claude vision
 _IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 
@@ -57,24 +24,8 @@ _IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 _STREAM_FLUSH_INTERVAL = 0.1  # seconds between Discord edits
 _STREAM_FLUSH_CHARS = 50     # min chars accumulated before edit
 
-
-@bot.event
-async def on_ready():
-    print(f"MiniClaw online as {bot.user}")
-    if AUTO_REPLY_ENABLED:
-        print(f"Auto-reply enabled with {AUTO_REPLY_CHANCE*100}% chance")
-        if AUTO_REPLY_CHANNELS:
-            print(f"Auto-reply channels: {AUTO_REPLY_CHANNELS}")
-        if AUTO_REPLY_KEYWORDS:
-            print(f"Auto-reply keywords: {AUTO_REPLY_KEYWORDS}")
-
-    # Start cron scheduler
-    from bot.config import CRON_ENABLED
-    if CRON_ENABLED:
-        from bot.cron import get_scheduler
-        scheduler = get_scheduler()
-        await scheduler.start(bot)
-        print("Cron scheduler started")
+# Track whether cron has been started (only once across all agents)
+_cron_started = False
 
 
 def _extract_image_urls(message: discord.Message) -> list[str]:
@@ -91,12 +42,12 @@ def _extract_image_urls(message: discord.Message) -> list[str]:
     return urls
 
 
-def should_auto_reply(message: discord.Message) -> bool:
+def should_auto_reply(message: discord.Message, bot_user) -> bool:
     if not AUTO_REPLY_ENABLED:
         return False
     if message.guild is None:
         return False
-    if bot.user in message.mentions:
+    if bot_user in message.mentions:
         return False
     if AUTO_REPLY_CHANNELS and AUTO_REPLY_CHANNELS != ['']:
         if str(message.channel.id) not in AUTO_REPLY_CHANNELS:
@@ -110,122 +61,163 @@ def should_auto_reply(message: discord.Message) -> bool:
     return random.random() < AUTO_REPLY_CHANCE
 
 
-async def _send_streaming(message: discord.Message, session_key: str, user_content):
-    """Stream Claude's reply, editing a single Discord message progressively.
+def create_bot(agent: Agent) -> discord.Client:
+    """Create a Discord client bound to a specific agent."""
+    intents = discord.Intents.default()
+    intents.message_content = True
+    bot = discord.Client(intents=intents)
 
-    Strategy: always edit the SAME message during streaming.  Only when the
-    final response is complete and exceeds 2 000 chars do we send overflow
-    as follow-up messages.
-    """
-    buffer = ""
-    sent_msg: discord.Message | None = None
-    last_edit = 0.0
-    last_edit_len = 0          # chars that were displayed at the last edit
-    stream_start = asyncio.get_event_loop().time()
+    async def _remember_user(message: discord.Message) -> None:
+        """Save user info to memory if new or name changed."""
+        user = message.author
+        uid = user.id
+        username = str(user)
+        display_name = user.display_name
 
-    async for chunk in llm.stream(session_key, user_content):
-        buffer += chunk
-        now = asyncio.get_event_loop().time()
+        cached = _known_users.get(uid)
+        if cached and cached == (username, display_name):
+            return
 
-        if not sent_msg:
-            # Send first message quickly: ≥5 visible chars OR 0.3s elapsed
-            if len(buffer.strip()) >= 5 or (now - stream_start) >= 0.3:
-                display = buffer[:1990]          # leave room for cursor
-                sent_msg = await message.reply(display + " ▍")
-                last_edit_len = len(buffer)
-                last_edit = now
-        else:
-            new_chars = len(buffer) - last_edit_len
-            should_edit = (
-                (now - last_edit >= _STREAM_FLUSH_INTERVAL and new_chars >= _STREAM_FLUSH_CHARS)
-                or new_chars >= 100              # force update every 100 new chars
-            )
+        _known_users[uid] = (username, display_name)
 
-            if should_edit:
-                display = buffer[:1990]          # always truncate to Discord limit
-                await sent_msg.edit(content=display + " ▍")
-                last_edit_len = len(buffer)
-                last_edit = now
+        channel_id = message.channel.id
+        timestamp = datetime.now().isoformat(timespec="seconds")
+        content = (
+            f"用户信息: ID={uid}, 用户名={username}, "
+            f"显示名={display_name}, 频道={channel_id}, 时间={timestamp}"
+        )
+        tags = ["user_profile"]
 
-    # ── Final: remove cursor and send full content ──────────────────────────
-    if sent_msg:
-        if len(buffer) <= 2000:
-            await sent_msg.edit(content=buffer)
-        else:
-            # First 2000 chars go into the existing message
-            await sent_msg.edit(content=buffer[:2000])
-            # Overflow → follow-up messages (only once, after stream ends)
-            for i in range(2000, len(buffer), 2000):
-                await message.channel.send(buffer[i : i + 2000])
-    elif buffer.strip():
-        # Stream finished before we could send the first message
-        for i in range(0, len(buffer), 2000):
-            await message.reply(buffer[i : i + 2000])
-    else:
-        await message.reply("[No response]")
-
-
-def _should_handle(message: discord.Message) -> bool:
-    """Check if this message should be handled (DM or @mention)."""
-    if message.guild is not None:
-        return bot.user in message.mentions
-    return True  # DM
-
-
-def _extract_content(message: discord.Message) -> str:
-    """Extract text content, stripping bot mentions."""
-    content = message.content
-    if message.guild is not None:
-        for mention_str in [f"<@{bot.user.id}>", f"<@!{bot.user.id}>"]:
-            content = content.replace(mention_str, "").strip()
-    return content
-
-
-async def _process_message(message: discord.Message) -> None:
-    """Process a message and reply."""
-    content = _extract_content(message)
-    image_urls = _extract_image_urls(message)
-
-    if not content and not image_urls:
-        return
-
-    # Handle /skills list command
-    if content.strip().lower() in ("/skills", "/skill"):
-        skills = get_loaded_skills()
-        await message.reply(build_skill_command_list(skills))
-        return
-
-    # Handle /skill-name commands
-    if content.startswith("/"):
-        skills = get_loaded_skills()
-        result = match_skill_command(content, skills)
-        if result:
-            skill, args = result
-            log.info("skill command: /%s args=%r", skill.name, args[:100] if args else "")
-            content = build_skill_user_message(skill, args)
-
-    session_key = f"{message.channel.id}:{message.author.id}"
-    user_content = build_user_content(content, image_urls if image_urls else None)
-
-    if image_urls:
-        log.info("multimodal message: %d image(s) + %d chars text", len(image_urls), len(content))
-
-    async with message.channel.typing():
         try:
-            reply_text = await llm.reply(session_key, user_content)
-            for i in range(0, len(reply_text), 2000):
-                await message.reply(reply_text[i : i + 2000])
+            result = memory.save(content=content, tags=tags, source="system",
+                                 memory_dir=agent.memory_dir)
+            action = "updated" if cached else "recorded"
+            log.info("user memory %s: %s (%s) → %s", action, username, display_name, result)
         except Exception as e:
-            log.error("reply error: %s", e)
-            await message.reply(f"Error: {e}")
+            log.error("failed to save user memory for %s: %s", username, e)
+
+    @bot.event
+    async def on_ready():
+        global _cron_started
+        print(f"Agent '{agent.name}' online as {bot.user}")
+        if AUTO_REPLY_ENABLED:
+            print(f"Auto-reply enabled with {AUTO_REPLY_CHANCE*100}% chance")
+
+        # Start cron scheduler only once (first agent)
+        if not _cron_started:
+            from bot.config import CRON_ENABLED
+            if CRON_ENABLED:
+                from bot.cron import get_scheduler
+                scheduler = get_scheduler()
+                await scheduler.start(bot)
+                print("Cron scheduler started")
+            _cron_started = True
+
+    async def _send_streaming(message: discord.Message, session_key: str, user_content):
+        """Stream Claude's reply, editing a single Discord message progressively."""
+        buffer = ""
+        sent_msg: discord.Message | None = None
+        last_edit = 0.0
+        last_edit_len = 0
+        stream_start = asyncio.get_event_loop().time()
+
+        async for chunk in llm.stream(session_key, user_content, agent=agent):
+            buffer += chunk
+            now = asyncio.get_event_loop().time()
+
+            if not sent_msg:
+                if len(buffer.strip()) >= 5 or (now - stream_start) >= 0.3:
+                    display = buffer[:1990]
+                    sent_msg = await message.reply(display + " ▍")
+                    last_edit_len = len(buffer)
+                    last_edit = now
+            else:
+                new_chars = len(buffer) - last_edit_len
+                should_edit = (
+                    (now - last_edit >= _STREAM_FLUSH_INTERVAL and new_chars >= _STREAM_FLUSH_CHARS)
+                    or new_chars >= 100
+                )
+
+                if should_edit:
+                    display = buffer[:1990]
+                    await sent_msg.edit(content=display + " ▍")
+                    last_edit_len = len(buffer)
+                    last_edit = now
+
+        if sent_msg:
+            if len(buffer) <= 2000:
+                await sent_msg.edit(content=buffer)
+            else:
+                await sent_msg.edit(content=buffer[:2000])
+                for i in range(2000, len(buffer), 2000):
+                    await message.channel.send(buffer[i : i + 2000])
+        elif buffer.strip():
+            for i in range(0, len(buffer), 2000):
+                await message.reply(buffer[i : i + 2000])
+        else:
+            await message.reply("[No response]")
+
+    def _should_handle(message: discord.Message) -> bool:
+        if message.guild is not None:
+            return bot.user in message.mentions
+        return True  # DM
+
+    def _extract_content(message: discord.Message) -> str:
+        content = message.content
+        if message.guild is not None:
+            for mention_str in [f"<@{bot.user.id}>", f"<@!{bot.user.id}>"]:
+                content = content.replace(mention_str, "").strip()
+        return content
+
+    async def _process_message(message: discord.Message) -> None:
+        content = _extract_content(message)
+        image_urls = _extract_image_urls(message)
+
+        if not content and not image_urls:
+            return
+
+        # Handle /skills list command
+        if content.strip().lower() in ("/skills", "/skill"):
+            skills = get_loaded_skills()
+            await message.reply(build_skill_command_list(skills))
+            return
+
+        # Handle /skill-name commands
+        if content.startswith("/"):
+            skills = get_loaded_skills()
+            result = match_skill_command(content, skills)
+            if result:
+                skill, args = result
+                log.info("skill command: /%s args=%r", skill.name, args[:100] if args else "")
+                content = build_skill_user_message(skill, args)
+
+        session_key = f"{message.channel.id}:{message.author.id}"
+        user_content = build_user_content(content, image_urls if image_urls else None)
+
+        if image_urls:
+            log.info("multimodal message: %d image(s) + %d chars text", len(image_urls), len(content))
+
+        async with message.channel.typing():
+            try:
+                reply_text = await llm.reply(session_key, user_content, agent=agent)
+                for i in range(0, len(reply_text), 2000):
+                    await message.reply(reply_text[i : i + 2000])
+            except Exception as e:
+                log.error("reply error: %s", e)
+                await message.reply(f"Error: {e}")
+
+    @bot.event
+    async def on_message(message: discord.Message):
+        if message.author == bot.user:
+            return
+
+        if not _should_handle(message):
+            return
+
+        await _process_message(message)
+
+    return bot
 
 
-@bot.event
-async def on_message(message: discord.Message):
-    if message.author == bot.user:
-        return
-
-    if not _should_handle(message):
-        return
-
-    await _process_message(message)
+# Backward compatibility: default bot instance (created lazily in main.py)
+bot: discord.Client | None = None

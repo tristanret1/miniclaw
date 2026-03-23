@@ -14,10 +14,10 @@ from bot.logger import get_logger
 
 log = get_logger("memory")
 
-MEMORY_DIR = WORKSPACE_DIR / "memory"
-MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+DEFAULT_MEMORY_DIR = WORKSPACE_DIR / "memory"
+DEFAULT_MEMORY_DIR.mkdir(parents=True, exist_ok=True)
 
-DB_PATH = MEMORY_DIR / "memory.db"
+DB_PATH = DEFAULT_MEMORY_DIR / "memory.db"
 
 # Chunking config (mirrors openclaw defaults)
 CHUNK_TOKENS = 400
@@ -34,8 +34,10 @@ VECTOR_WEIGHT = 0.6
 
 # ── SQLite setup ──────────────────────────────────────────────────────────────
 
-def _get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH))
+def _get_db(memory_dir: Path | None = None) -> sqlite3.Connection:
+    db_path = (memory_dir / "memory.db") if memory_dir else DB_PATH
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     _ensure_schema(conn)
@@ -132,10 +134,12 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
 
 # ── Markdown file persistence (keeps human-readable daily logs) ───────────────
 
-def _append_to_daily_log(content: str, tags: list[str] | None) -> str:
+def _append_to_daily_log(content: str, tags: list[str] | None, memory_dir: Path | None = None) -> str:
     """Also write to daily Markdown for human readability."""
+    mem_dir = memory_dir or DEFAULT_MEMORY_DIR
+    mem_dir.mkdir(parents=True, exist_ok=True)
     today = date.today().isoformat()
-    filepath = MEMORY_DIR / f"{today}.md"
+    filepath = mem_dir / f"{today}.md"
 
     tag_line = ""
     if tags:
@@ -153,12 +157,13 @@ def _append_to_daily_log(content: str, tags: list[str] | None) -> str:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def save(content: str, tags: list[str] | None = None, source: str = "agent") -> str:
+def save(content: str, tags: list[str] | None = None, source: str = "agent",
+         memory_dir: Path | None = None) -> str:
     """Save a memory entry to SQLite + daily Markdown log."""
     now = datetime.now().isoformat()
     tags_str = ", ".join(tags) if tags else ""
 
-    conn = _get_db()
+    conn = _get_db(memory_dir)
     try:
         cur = conn.execute(
             "INSERT INTO memories (content, tags, source, created_at) VALUES (?, ?, ?, ?)",
@@ -178,15 +183,15 @@ def save(content: str, tags: list[str] | None = None, source: str = "agent") -> 
     finally:
         conn.close()
 
-    logfile = _append_to_daily_log(content, tags)
+    logfile = _append_to_daily_log(content, tags, memory_dir)
     log.info("memory saved #%d → %s (%d chars, tags=%s, embedding=%s)",
              memory_id, logfile, len(content), tags, "yes" if vec else "no")
     return f"Saved memory #{memory_id} to {logfile}"
 
 
-def search(query: str, max_results: int = 10) -> str:
+def search(query: str, max_results: int = 10, memory_dir: Path | None = None) -> str:
     """Hybrid search: BM25 + vector similarity when embeddings available."""
-    conn = _get_db()
+    conn = _get_db(memory_dir)
     try:
         return _hybrid_search(conn, query, max_results)
     finally:

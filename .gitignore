@@ -1,4 +1,5 @@
 .env
+agents.json
 .credentials.json
 .codex_credentials.json
 __pycache__/
@@ -8,4 +9,7 @@ venv/
 logs/
 workspace/memory/
 workspace/sessions.db*
+workspace_*/memory/
+workspace_*/sessions.db*
+workspace_*/cron.db
 scripts/deploy.config

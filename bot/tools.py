@@ -474,7 +474,7 @@ async def run_phone_call(to: str, message: str, language: str = "zh-CN") -> str:
         return f"Error making call: {e}"
 
 
-async def handle_tool_call(tool_name: str, tool_input: dict) -> str:
+async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None) -> str:
     if tool_name == "exec":
         return await run_exec(
             command=tool_input["command"],
@@ -485,11 +485,13 @@ async def handle_tool_call(tool_name: str, tool_input: dict) -> str:
         return memory.save(
             content=tool_input["content"],
             tags=tool_input.get("tags"),
+            memory_dir=memory_dir,
         )
     if tool_name == "memory_search":
         return memory.search(
             query=tool_input["query"],
             max_results=tool_input.get("max_results", 10),
+            memory_dir=memory_dir,
         )
     if tool_name == "claude_code":
         timeout = min(max(tool_input.get("timeout", 300), 30), 600)

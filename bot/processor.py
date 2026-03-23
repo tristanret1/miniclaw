@@ -21,10 +21,13 @@ MAX_TOOL_ROUNDS = 20
 class StreamProcessor:
     """Process LLM streaming responses: tool loop, content accumulation, auto-flush."""
 
-    def __init__(self, provider: BaseProvider, session: SessionManager, session_key: str):
+    def __init__(self, provider: BaseProvider, session: SessionManager, session_key: str,
+                 system_prompt: str | None = None, memory_dir=None):
         self.provider = provider
         self.session = session
         self.session_key = session_key
+        self._system_prompt = system_prompt or SYSTEM_PROMPT
+        self._memory_dir = memory_dir
 
     async def process(self, user_content: Content) -> AsyncIterator[str]:
         """Full processing flow: append user message, tool loop, yield text chunks."""
@@ -49,7 +52,7 @@ class StreamProcessor:
 
             try:
                 async for event in self.provider.stream(
-                    history, SYSTEM_PROMPT, tools=tools
+                    history, self._system_prompt, tools=tools
                 ):
                     etype = event.get("_event")
 
@@ -96,7 +99,7 @@ class StreamProcessor:
                 log.error("LLM call error on round %d: %s", round_num, e)
                 if "Auth expired" in str(e):
                     response = await self.provider.call(
-                        history, SYSTEM_PROMPT, tools=tools
+                        history, self._system_prompt, tools=tools
                     )
                     collected_content = response.get("content", [])
                     stop_reason = response.get("stop_reason")
@@ -146,7 +149,8 @@ class StreamProcessor:
 
         async def _run_tool(block: dict) -> dict:
             try:
-                result = await handle_tool_call(block["name"], block.get("input", {}))
+                result = await handle_tool_call(block["name"], block.get("input", {}),
+                                               memory_dir=self._memory_dir)
                 return {
                     "type": "tool_result",
                     "tool_use_id": block["id"],
@@ -174,14 +178,14 @@ class StreamProcessor:
             for _ in range(5):
                 try:
                     response = await self.provider.call(
-                        flush_history, SYSTEM_PROMPT, tools=tools
+                        flush_history, self._system_prompt, tools=tools
                     )
                 except RuntimeError as e:
                     if "400" in str(e) or "tool_use" in str(e) or "tool_result" in str(e):
                         flush_history = sanitize(flush_history, PROVIDER)
                         log.warning("flush: sanitized history after 400, retrying")
                         response = await self.provider.call(
-                            flush_history, SYSTEM_PROMPT, tools=tools
+                            flush_history, self._system_prompt, tools=tools
                         )
                     else:
                         raise
@@ -195,7 +199,8 @@ class StreamProcessor:
                 tool_results = []
                 for block in content:
                     if block["type"] == "tool_use":
-                        result = await handle_tool_call(block["name"], block["input"])
+                        result = await handle_tool_call(block["name"], block["input"],
+                                                        memory_dir=self._memory_dir)
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": block["id"],

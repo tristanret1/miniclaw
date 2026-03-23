@@ -1,4 +1,11 @@
+import sys
 from pathlib import Path
+
+# Delegate to agent CLI if "agents" subcommand is used
+if len(sys.argv) > 1 and sys.argv[1] == "agents":
+    from scripts.agent_cli import main as cli_main
+    cli_main(sys.argv[2:])
+    sys.exit(0)
 
 env_path = Path(__file__).parent / ".env"
 creds_path = Path(__file__).parent / ".credentials.json"
@@ -10,16 +17,23 @@ if not env_path.exists() or not creds_path.exists():
     print()
 
 import asyncio
-import signal
-from bot.config import DISCORD_BOT_TOKEN, SMS_ENABLED, IMESSAGE_ENABLED
-from bot.client import bot
+from bot.config import SMS_ENABLED, IMESSAGE_ENABLED
+from bot.agent import load_agents
+from bot.client import create_bot
+from bot.session import SessionManager
 
 
 async def main():
-    if not DISCORD_BOT_TOKEN:
-        raise SystemExit("DISCORD_BOT_TOKEN not set. Run: python setup.py")
+    agents = load_agents()
 
-    tasks = [bot.start(DISCORD_BOT_TOKEN)]
+    # Initialize per-agent runtime state
+    for agent in agents:
+        agent.session_mgr = SessionManager(db_path=agent.sessions_db)
+
+    tasks = []
+    for agent in agents:
+        bot = create_bot(agent)
+        tasks.append(bot.start(agent.discord_token))
 
     if SMS_ENABLED:
         from bot.sms_gateway import start_sms_server

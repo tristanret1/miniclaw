@@ -30,12 +30,13 @@ SKILLS_DIR = Path(__file__).parent.parent / "skills"
 _BOOTSTRAP_FILES = ["SOUL.md", "IDENTITY.md", "USER.md", "MEMORY.md"]
 
 
-def build_system_prompt() -> str:
+def build_system_prompt(workspace_dir: Path | None = None) -> str:
     """Build system prompt by reading workspace bootstrap files + skills."""
+    ws = workspace_dir or WORKSPACE_DIR
     parts: list[str] = []
 
     for filename in _BOOTSTRAP_FILES:
-        filepath = WORKSPACE_DIR / filename
+        filepath = ws / filename
         if filepath.exists():
             content = filepath.read_text().strip()
             if content:

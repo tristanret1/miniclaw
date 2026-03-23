@@ -25,9 +25,9 @@ class TestSessionManager:
         mgr1.append("test:1", "assistant", "world")
 
         # Reset connection to simulate restart
-        if session_mod._conn is not None:
-            session_mod._conn.close()
-            session_mod._conn = None
+        for conn in session_mod._conns.values():
+            conn.close()
+        session_mod._conns.clear()
 
         mgr2 = SessionManager()
         history = mgr2.get_history("test:1")
@@ -73,9 +73,9 @@ class TestSessionManager:
         mgr.append("test:1", "user", tool_result_content)
 
         # Reset to force DB reload
-        if session_mod._conn is not None:
-            session_mod._conn.close()
-            session_mod._conn = None
+        for conn in session_mod._conns.values():
+            conn.close()
+        session_mod._conns.clear()
 
         mgr2 = SessionManager()
         history = mgr2.get_history("test:1")
@@ -95,9 +95,9 @@ class TestSessionManager:
         session_mod._persist("test:1", "user", "next")
 
         # Reset cache + connection
-        if session_mod._conn is not None:
-            session_mod._conn.close()
-            session_mod._conn = None
+        for conn in session_mod._conns.values():
+            conn.close()
+        session_mod._conns.clear()
 
         mgr2 = SessionManager()
         history = mgr2.get_history("test:1")

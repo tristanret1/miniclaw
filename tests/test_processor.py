@@ -51,7 +51,7 @@ class TestStreamProcessor:
                 chunks.append(chunk)
 
             assert "".join(chunks) == "Here are the files"
-            mock_tool.assert_called_once_with("exec", {"command": "ls"})
+            mock_tool.assert_called_once_with("exec", {"command": "ls"}, memory_dir=None)
 
     async def test_tool_call_error_handling(self, session_db, make_tool_events, make_text_events):
         """Tool execution failure sends error result back to provider."""
