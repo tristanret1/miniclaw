@@ -85,3 +85,13 @@ AUTO_REPLY_ENABLED = os.getenv("AUTO_REPLY_ENABLED", "false").lower() in ("true"
 AUTO_REPLY_CHANNELS = os.getenv("AUTO_REPLY_CHANNELS", "").split(",")  # Channel IDs where auto-reply is allowed
 AUTO_REPLY_CHANCE = float(os.getenv("AUTO_REPLY_CHANCE", "0.1"))  # 0.1 = 10% chance to reply
 AUTO_REPLY_KEYWORDS = os.getenv("AUTO_REPLY_KEYWORDS", "").split(",")  # Keywords that trigger auto-reply
+
+# Heartbeat settings
+HEARTBEAT_ENABLED = os.getenv("HEARTBEAT_ENABLED", "false").lower() in ("true", "1", "yes")
+HEARTBEAT_INTERVAL = os.getenv("HEARTBEAT_INTERVAL", "30m")  # e.g. "30m", "1h", "2h30m"
+HEARTBEAT_CHANNEL_ID = os.getenv("HEARTBEAT_CHANNEL_ID", "")  # Discord channel for heartbeat delivery
+HEARTBEAT_ACTIVE_START = os.getenv("HEARTBEAT_ACTIVE_START", "")  # "HH:MM" (24h), inclusive
+HEARTBEAT_ACTIVE_END = os.getenv("HEARTBEAT_ACTIVE_END", "")  # "HH:MM" (24h), exclusive
+HEARTBEAT_ACTIVE_TZ = os.getenv("HEARTBEAT_ACTIVE_TZ", "")  # IANA timezone (empty = local)
+HEARTBEAT_ACK_MAX_CHARS = int(os.getenv("HEARTBEAT_ACK_MAX_CHARS", "300"))
+HEARTBEAT_ISOLATED = os.getenv("HEARTBEAT_ISOLATED", "true").lower() in ("true", "1", "yes")

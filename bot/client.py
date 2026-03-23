@@ -6,7 +6,13 @@ import discord
 from bot import llm
 from bot.agent import Agent
 from bot.message import build_user_content
-from bot.config import AUTO_REPLY_ENABLED, AUTO_REPLY_CHANNELS, AUTO_REPLY_CHANCE, AUTO_REPLY_KEYWORDS, get_loaded_skills
+from bot.config import (
+    AUTO_REPLY_ENABLED, AUTO_REPLY_CHANNELS, AUTO_REPLY_CHANCE, AUTO_REPLY_KEYWORDS,
+    HEARTBEAT_ENABLED, HEARTBEAT_INTERVAL, HEARTBEAT_CHANNEL_ID,
+    HEARTBEAT_ACTIVE_START, HEARTBEAT_ACTIVE_END, HEARTBEAT_ACTIVE_TZ,
+    HEARTBEAT_ACK_MAX_CHARS, HEARTBEAT_ISOLATED,
+    get_loaded_skills,
+)
 from bot.skills import match_skill_command, build_skill_user_message, build_skill_command_list
 from bot import memory
 from bot.logger import get_logger
@@ -26,6 +32,9 @@ _STREAM_FLUSH_CHARS = 50     # min chars accumulated before edit
 
 # Track whether cron has been started (only once across all agents)
 _cron_started = False
+
+# Active heartbeat runners (per agent name)
+_heartbeat_runners: dict[str, object] = {}
 
 
 def _extract_image_urls(message: discord.Message) -> list[str]:
@@ -113,6 +122,40 @@ def create_bot(agent: Agent) -> discord.Client:
                 print("Cron scheduler started")
             _cron_started = True
 
+        # Start heartbeat for this agent
+        if HEARTBEAT_ENABLED and agent.name not in _heartbeat_runners:
+            channel_id = HEARTBEAT_CHANNEL_ID
+            if channel_id:
+                from bot.heartbeat import HeartbeatRunner
+
+                async def _deliver_heartbeat(text: str, _bot=bot, _cid=channel_id) -> None:
+                    """Deliver heartbeat message to configured Discord channel."""
+                    try:
+                        channel = _bot.get_channel(int(_cid))
+                        if channel is None:
+                            channel = await _bot.fetch_channel(int(_cid))
+                        for i in range(0, len(text), 2000):
+                            await channel.send(text[i : i + 2000])
+                    except Exception as e:
+                        log.error("heartbeat delivery to channel %s failed: %s", _cid, e)
+                        raise
+
+                runner = HeartbeatRunner(
+                    agent=agent,
+                    deliver_fn=_deliver_heartbeat,
+                    interval=HEARTBEAT_INTERVAL,
+                    active_hours_start=HEARTBEAT_ACTIVE_START,
+                    active_hours_end=HEARTBEAT_ACTIVE_END,
+                    active_hours_tz=HEARTBEAT_ACTIVE_TZ,
+                    ack_max_chars=HEARTBEAT_ACK_MAX_CHARS,
+                    isolated_session=HEARTBEAT_ISOLATED,
+                )
+                await runner.start()
+                _heartbeat_runners[agent.name] = runner
+                print(f"Heartbeat started for agent '{agent.name}' (every {HEARTBEAT_INTERVAL})")
+            else:
+                log.warning("HEARTBEAT_ENABLED but HEARTBEAT_CHANNEL_ID not set — skipping")
+
     async def _send_streaming(message: discord.Message, session_key: str, user_content):
         """Stream Claude's reply, editing a single Discord message progressively."""
         buffer = ""
@@ -174,6 +217,17 @@ def create_bot(agent: Agent) -> discord.Client:
         image_urls = _extract_image_urls(message)
 
         if not content and not image_urls:
+            return
+
+        # Handle /heartbeat — manual trigger
+        if content.strip().lower() == "/heartbeat":
+            runner = _heartbeat_runners.get(agent.name)
+            if runner is None:
+                await message.reply("Heartbeat not enabled. Set `HEARTBEAT_ENABLED=true` and `HEARTBEAT_CHANNEL_ID`.")
+                return
+            await message.reply("Running heartbeat...")
+            result = await runner.wake(reason="manual")
+            await message.reply(f"Heartbeat result: `{result}`")
             return
 
         # Handle /skills list command
