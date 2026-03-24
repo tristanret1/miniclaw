@@ -7,6 +7,9 @@ dependencies = [
     "httpx[http2]",
     "python-dotenv",
     "claude-agent-sdk>=0.1.48",
+    "google-auth-oauthlib>=1.0",
+    "google-api-python-client>=2.0",
+    "google-auth>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -20,6 +23,9 @@ dev = [
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "integration: tests that call real external APIs (deselect with '-m \"not integration\"')",
+]
 filterwarnings = [
     "ignore::DeprecationWarning:discord.*",
 ]

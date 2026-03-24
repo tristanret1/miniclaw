@@ -37,6 +37,11 @@ def pytest_configure(config):
         "IMESSAGE_DB_PATH": "",
         "IMESSAGE_ALLOW_FROM": "",
         "IMESSAGE_SERVICE": "auto",
+        "GOOGLE_CALENDAR_ENABLED": "false",
+        "GOOGLE_CALENDAR_CLIENT_ID": "",
+        "GOOGLE_CALENDAR_CLIENT_SECRET": "",
+        "GOOGLE_CALENDAR_LIFE_ID": "test-life@gmail.com",
+        "GOOGLE_CALENDAR_WORK_ID": "test-work@gmail.com",
     }
     for key, val in defaults.items():
         os.environ.setdefault(key, val)

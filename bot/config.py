@@ -63,6 +63,13 @@ def get_loaded_skills():
 
 SYSTEM_PROMPT = build_system_prompt()
 
+# Google Calendar integration
+GOOGLE_CALENDAR_ENABLED = os.getenv("GOOGLE_CALENDAR_ENABLED", "false").lower() in ("true", "1", "yes")
+GOOGLE_CALENDAR_CLIENT_ID = os.getenv("GOOGLE_CALENDAR_CLIENT_ID", "")
+GOOGLE_CALENDAR_CLIENT_SECRET = os.getenv("GOOGLE_CALENDAR_CLIENT_SECRET", "")
+GOOGLE_CALENDAR_LIFE_ID = os.getenv("GOOGLE_CALENDAR_LIFE_ID", "")  # personal calendar ID
+GOOGLE_CALENDAR_WORK_ID = os.getenv("GOOGLE_CALENDAR_WORK_ID", "")  # work calendar ID (read-only)
+
 # Cron scheduler
 CRON_ENABLED = os.getenv("CRON_ENABLED", "true").lower() in ("true", "1", "yes")
 CRON_TIMEZONE = os.getenv("CRON_TIMEZONE", "America/Vancouver")

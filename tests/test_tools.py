@@ -79,6 +79,16 @@ class TestHandleToolCall:
             assert result == "code result"
 
 
+    async def test_google_calendar_routing(self):
+        with patch("bot.google_calendar.list_events", return_value=[]) as mock_list, \
+             patch("bot.google_calendar.format_events", return_value="No events found for this period.") as mock_fmt:
+            result = await handle_tool_call(
+                "google_calendar",
+                {"action": "list", "date_start": "2026-03-23T00:00:00", "date_end": "2026-03-24T00:00:00"},
+            )
+            assert "No events found" in result
+
+
 class TestToolDefinitions:
     def test_all_tools_have_required_fields(self):
         for tool in ALL_TOOLS:

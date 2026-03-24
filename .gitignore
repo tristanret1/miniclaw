@@ -2,6 +2,7 @@
 agents.json
 .credentials.json
 .codex_credentials.json
+.google_credentials*.json
 __pycache__/
 *.pyc
 .venv/
