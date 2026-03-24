@@ -351,6 +351,13 @@ main() {
     log "Setting up instance..."
     run_remote "apt-get update -qq && apt-get install -y -qq python3-pip python3-venv git > /dev/null 2>&1 && echo deps-ok"
 
+    # Step 1b: Install ngrok if not present
+    log "Ensuring ngrok is installed..."
+    run_remote "if command -v ngrok &>/dev/null; then echo ngrok-already-installed; else curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null && echo 'deb https://ngrok-agent.s3.amazonaws.com bookworm main' | tee /etc/apt/sources.list.d/ngrok.list && apt-get update -qq && apt-get install -y -qq ngrok && echo ngrok-installed; fi"
+
+    log "Configuring ngrok authtoken..."
+    run_remote "sudo -u ubuntu ngrok config add-authtoken 3BEyqkHTb5bxKKCcmm7hyw3kTwk_5cBqoepzYPCr9kb4Qpfpv && echo ngrok-configured"
+
     # Step 2: Clone or pull (inject PAT into HTTPS URL for auth)
     log "Deploying code..."
     local clone_url="$REPO"
@@ -405,7 +412,7 @@ chmod 600 '${APP_DIR}/agents.json' && chown ubuntu:ubuntu '${APP_DIR}/agents.jso
         warn "No agents.json found locally — skipping"
     fi
 
-    # Step 6: Create systemd service
+    # Step 6: Create systemd service (uses start.sh for tunnel + bot)
     log "Setting up systemd service..."
     run_remote "cat > /etc/systemd/system/${SERVICE_NAME}.service << UNIT
 [Unit]
@@ -417,7 +424,7 @@ Wants=network-online.target
 Type=simple
 User=ubuntu
 WorkingDirectory=${APP_DIR}
-ExecStart=${APP_DIR}/venv/bin/python main.py
+ExecStart=/bin/bash ${APP_DIR}/start.sh
 Restart=always
 RestartSec=5
 StandardOutput=journal
