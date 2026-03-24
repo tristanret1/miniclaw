@@ -380,6 +380,31 @@ ${creds_content}
 CREDEOF
 chmod 600 '${APP_DIR}/.credentials.json' && chown ubuntu:ubuntu '${APP_DIR}/.credentials.json' && echo creds-ok"
 
+    # Step 4b: Upload optional credential files if they exist locally
+    if [[ -f "$project_dir/.codex_credentials.json" ]]; then
+        log "Writing .codex_credentials.json..."
+        local codex_creds_content
+        codex_creds_content=$(cat "$project_dir/.codex_credentials.json")
+        run_remote "cat > '${APP_DIR}/.codex_credentials.json' << 'CODEXEOF'
+${codex_creds_content}
+CODEXEOF
+chmod 600 '${APP_DIR}/.codex_credentials.json' && chown ubuntu:ubuntu '${APP_DIR}/.codex_credentials.json' && echo codex-creds-ok"
+    else
+        warn "No .codex_credentials.json found locally — skipping"
+    fi
+
+    if [[ -f "$project_dir/agents.json" ]]; then
+        log "Writing agents.json..."
+        local agents_content
+        agents_content=$(cat "$project_dir/agents.json")
+        run_remote "cat > '${APP_DIR}/agents.json' << 'AGENTSEOF'
+${agents_content}
+AGENTSEOF
+chmod 600 '${APP_DIR}/agents.json' && chown ubuntu:ubuntu '${APP_DIR}/agents.json' && echo agents-ok"
+    else
+        warn "No agents.json found locally — skipping"
+    fi
+
     # Step 6: Create systemd service
     log "Setting up systemd service..."
     run_remote "cat > /etc/systemd/system/${SERVICE_NAME}.service << UNIT

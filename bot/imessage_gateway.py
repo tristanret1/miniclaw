@@ -275,6 +275,11 @@ def get_gateway_client() -> IMessageRpcClient | None:
 async def start_imessage_gateway() -> None:
     """Start the iMessage gateway. Listens for inbound messages via imsg rpc.
     Runs until cancelled."""
+    import shutil
+    if not shutil.which(IMESSAGE_CLI_PATH):
+        log.warning("imsg binary not found at '%s' — iMessage gateway disabled", IMESSAGE_CLI_PATH)
+        return
+
     global _gateway_client
 
     client = IMessageRpcClient(cli_path=IMESSAGE_CLI_PATH, db_path=IMESSAGE_DB_PATH)
