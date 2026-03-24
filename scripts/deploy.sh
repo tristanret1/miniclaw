@@ -353,10 +353,10 @@ main() {
 
     # Step 1b: Install ngrok if not present
     log "Ensuring ngrok is installed..."
-    run_remote "if command -v ngrok &>/dev/null; then echo ngrok-already-installed; else curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null && echo 'deb https://ngrok-agent.s3.amazonaws.com bookworm main' | tee /etc/apt/sources.list.d/ngrok.list && apt-get update -qq && apt-get install -y -qq ngrok && echo ngrok-installed; fi"
+    run_remote "if command -v ngrok &>/dev/null; then echo ngrok-already-installed; else curl -sSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz | tar xz -C /usr/local/bin && chmod +x /usr/local/bin/ngrok && ngrok version && echo ngrok-installed; fi"
 
     log "Configuring ngrok authtoken..."
-    run_remote "sudo -u ubuntu ngrok config add-authtoken 3BEyqkHTb5bxKKCcmm7hyw3kTwk_5cBqoepzYPCr9kb4Qpfpv && echo ngrok-configured"
+    run_remote "sudo -u ubuntu /usr/local/bin/ngrok config add-authtoken 3BEyqkHTb5bxKKCcmm7hyw3kTwk_5cBqoepzYPCr9kb4Qpfpv && echo ngrok-configured"
 
     # Step 2: Clone or pull (inject PAT into HTTPS URL for auth)
     log "Deploying code..."
