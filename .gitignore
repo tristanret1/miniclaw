@@ -3,14 +3,12 @@ agents.json
 .credentials.json
 .codex_credentials.json
 .google_credentials*.json
+.DS_Store
 __pycache__/
 *.pyc
 .venv/
 venv/
 logs/
-workspace/memory/
-workspace/sessions.db*
-workspace_*/memory/
-workspace_*/sessions.db*
-workspace_*/cron.db
+workspace/
+workspace_*/
 scripts/deploy.config
