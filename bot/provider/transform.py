@@ -74,17 +74,34 @@ def sanitize_for_anthropic(messages: list[Message]) -> list[Message]:
                         i += 1
                 continue
 
-        # Drop user messages that contain tool_result without a preceding tool_use
+        # Drop user messages that contain tool_result without matching tool_use
         if msg.get("role") == "user":
             content = msg.get("content", [])
-            if (
-                isinstance(content, list)
-                and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
-            ):
-                if not sanitized or sanitized[-1].get("role") != "assistant":
-                    log.warning("dropping orphan tool_result user message at index %d", i)
-                    i += 1
-                    continue
+            if isinstance(content, list):
+                result_ids = {
+                    b.get("tool_use_id") for b in content
+                    if isinstance(b, dict) and b.get("type") == "tool_result"
+                }
+                if result_ids:
+                    # Must have preceding assistant with matching tool_use IDs
+                    prev_tool_use_ids: set[str] = set()
+                    if sanitized and sanitized[-1].get("role") == "assistant":
+                        prev_content = sanitized[-1].get("content", [])
+                        if isinstance(prev_content, list):
+                            prev_tool_use_ids = {
+                                b["id"] for b in prev_content
+                                if isinstance(b, dict)
+                                and b.get("type") == "tool_use"
+                                and "id" in b
+                            }
+                    if not result_ids <= prev_tool_use_ids:
+                        log.warning(
+                            "dropping orphan tool_result user message at index %d "
+                            "(result_ids=%s, prev_use_ids=%s)",
+                            i, result_ids, prev_tool_use_ids,
+                        )
+                        i += 1
+                        continue
 
         sanitized.append(msg)
         i += 1

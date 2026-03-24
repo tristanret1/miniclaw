@@ -181,6 +181,25 @@ def is_within_active_hours(
         return current_min >= start_min or current_min < end_min
 
 
+# ── Real-world context ───────────────────────────────────────────────────────
+
+def _get_today_calendar() -> str | None:
+    """Fetch today's calendar events. Returns None if calendar not enabled."""
+    from bot.config import GOOGLE_CALENDAR_ENABLED
+    if not GOOGLE_CALENDAR_ENABLED:
+        return None
+    try:
+        from bot import google_calendar as gcal
+        today = datetime.now().strftime("%Y-%m-%d")
+        start = f"{today}T00:00:00"
+        end = f"{today}T23:59:59"
+        events = gcal.list_events(calendar="both", date_start=start, date_end=end)
+        return gcal.format_events(events)
+    except Exception as e:
+        log.warning("failed to fetch calendar for heartbeat: %s", e)
+        return None
+
+
 # ── Heartbeat runner ─────────────────────────────────────────────────────────
 
 class HeartbeatRunner:
@@ -252,8 +271,16 @@ class HeartbeatRunner:
             log.debug("heartbeat skipped: empty HEARTBEAT.md")
             return "skipped:empty-heartbeat-file"
 
-        # Build prompt
-        prompt = f"{HEARTBEAT_PROMPT}\n\n---\n\nHEARTBEAT.md contents:\n{checklist}"
+        # Build prompt with real-world context
+        context_parts = [HEARTBEAT_PROMPT]
+
+        # Inject today's calendar if available
+        calendar_text = _get_today_calendar()
+        if calendar_text:
+            context_parts.append(f"\n\nToday's calendar:\n{calendar_text}")
+
+        context_parts.append(f"\n\n---\n\nHEARTBEAT.md contents:\n{checklist}")
+        prompt = "".join(context_parts)
 
         # Session key: isolated or persistent
         if self._isolated:

@@ -122,8 +122,13 @@ class SessionManager:
     def trim(self, session_key: str) -> None:
         """Trim history if it exceeds the max limit."""
         history = self.get_history(session_key)
-        if len(history) > MAX_HISTORY * 2:
+        before = len(history)
+        if before > MAX_HISTORY * 2:
             history[:] = sanitize(history[-(MAX_HISTORY * 2):], PROVIDER)
+            log.warning(
+                "trimmed session %s: %d -> %d messages (limit %d)",
+                session_key, before, len(history), MAX_HISTORY * 2,
+            )
 
     def clear(self, session_key: str) -> int:
         """Clear session from cache and DB."""

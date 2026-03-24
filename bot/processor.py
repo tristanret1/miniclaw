@@ -3,6 +3,7 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from datetime import datetime, timezone
 
 from bot.config import PROVIDER, SYSTEM_PROMPT, TOOLS_ENABLED
 from bot.logger import get_logger
@@ -26,8 +27,16 @@ class StreamProcessor:
         self.provider = provider
         self.session = session
         self.session_key = session_key
-        self._system_prompt = system_prompt or SYSTEM_PROMPT
+        self._system_prompt = self._build_system_prompt(system_prompt or SYSTEM_PROMPT)
         self._memory_dir = memory_dir
+
+    @staticmethod
+    def _build_system_prompt(base: str) -> str:
+        """Append real-time context (current time + timezone) to system prompt."""
+        now = datetime.now().astimezone()
+        tz_name = now.tzname() or "UTC"
+        time_str = now.strftime(f"%Y-%m-%d %H:%M %A ({tz_name})")
+        return f"{base}\n\nCurrent time: {time_str}"
 
     async def process(self, user_content: Content) -> AsyncIterator[str]:
         """Full processing flow: append user message, tool loop, yield text chunks."""

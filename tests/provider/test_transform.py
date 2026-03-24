@@ -155,6 +155,55 @@ class TestSanitizeForAnthropic:
         ]
 
 
+    def test_tool_result_after_plain_assistant_dropped(self):
+        """Regression: tool_result whose tool_use was trimmed away."""
+        msgs = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "hello"},  # no tool_use
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "toolu_OLD", "content": "stale"},
+            ]},
+            {"role": "assistant", "content": "whatever"},
+        ]
+        result = sanitize_for_anthropic(msgs)
+        # The orphan tool_result must be dropped
+        for m in result:
+            c = m.get("content", [])
+            if isinstance(c, list):
+                assert not any(
+                    b.get("type") == "tool_result" for b in c if isinstance(b, dict)
+                ), "orphan tool_result should have been dropped"
+
+    def test_tool_result_with_wrong_ids_after_tool_use_dropped(self):
+        """tool_result references an ID not in the preceding tool_use assistant msg."""
+        msgs = [
+            {"role": "user", "content": "run"},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "t1", "name": "exec", "input": {}},
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": "ok"},
+            ]},
+            {"role": "assistant", "content": [
+                {"type": "text", "text": "done"},
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t_OTHER", "content": "orphan"},
+            ]},
+        ]
+        result = sanitize_for_anthropic(msgs)
+        # t_OTHER result should be dropped; first pair should survive
+        result_ids_found = set()
+        for m in result:
+            c = m.get("content", [])
+            if isinstance(c, list):
+                for b in c:
+                    if isinstance(b, dict) and b.get("type") == "tool_result":
+                        result_ids_found.add(b.get("tool_use_id"))
+        assert "t1" in result_ids_found
+        assert "t_OTHER" not in result_ids_found
+
+
 class TestSanitizeRouter:
     def test_routes_to_anthropic(self):
         msgs = [
