@@ -161,12 +161,12 @@ def _append_to_daily_log(content: str, tags: list[str] | None, memory_dir: Path 
 # ── Public API ────────────────────────────────────────────────────────────────
 
 async def save(content: str, tags: list[str] | None = None, source: str = "agent",
-               memory_dir: Path | None = None) -> str:
+               memory_dir: Path | None = None, agent_name: str = "default") -> str:
     """Save a memory entry to DB + daily Markdown log."""
     from bot.db import use_postgres
 
     if use_postgres():
-        return await _pg_save(content, tags, source, memory_dir)
+        return await _pg_save(content, tags, source, memory_dir, agent_name)
     return _sqlite_save(content, tags, source, memory_dir)
 
 
@@ -202,7 +202,7 @@ def _sqlite_save(content: str, tags: list[str] | None, source: str,
 
 
 async def _pg_save(content: str, tags: list[str] | None, source: str,
-                   memory_dir: Path | None) -> str:
+                   memory_dir: Path | None, agent_name: str = "default") -> str:
     """Save via PostgreSQL."""
     from bot.db import get_pool
 
@@ -211,8 +211,8 @@ async def _pg_save(content: str, tags: list[str] | None, source: str,
 
     async with pool.acquire() as conn:
         memory_id = await conn.fetchval(
-            "INSERT INTO memories (content, tags, source) VALUES ($1, $2, $3) RETURNING id",
-            content, tags_str or None, source,
+            "INSERT INTO memories (content, tags, source, agent_name) VALUES ($1, $2, $3, $4) RETURNING id",
+            content, tags_str or None, source, agent_name,
         )
 
         vec = _get_embedding(content)
@@ -229,12 +229,13 @@ async def _pg_save(content: str, tags: list[str] | None, source: str,
     return f"Saved memory #{memory_id} to {logfile}"
 
 
-async def search(query: str, max_results: int = 10, memory_dir: Path | None = None) -> str:
+async def search(query: str, max_results: int = 10, memory_dir: Path | None = None,
+                 agent_name: str = "default") -> str:
     """Hybrid search: BM25 + vector similarity when embeddings available."""
     from bot.db import use_postgres
 
     if use_postgres():
-        return await _pg_search(query, max_results)
+        return await _pg_search(query, max_results, agent_name)
 
     conn = _get_db(memory_dir)
     try:
@@ -355,7 +356,7 @@ def _merge_scores(
 
 # ── PostgreSQL search ─────────────────────────────────────────────────────────
 
-async def _pg_search(query: str, max_results: int) -> str:
+async def _pg_search(query: str, max_results: int, agent_name: str = "default") -> str:
     """Hybrid search via PostgreSQL: tsvector FTS + pgvector cosine similarity."""
     from bot.db import get_pool
 
@@ -369,10 +370,11 @@ async def _pg_search(query: str, max_results: int) -> str:
             SELECT id, ts_rank_cd(content_tsv, plainto_tsquery('english', $1)) AS rank
             FROM memories
             WHERE content_tsv @@ plainto_tsquery('english', $1)
+              AND agent_name = $3
             ORDER BY rank DESC
             LIMIT $2
             """,
-            query, max_results * 2,
+            query, max_results * 2, agent_name,
         )
         if rows:
             max_rank = max(r["rank"] for r in rows) or 1.0
@@ -388,10 +390,12 @@ async def _pg_search(query: str, max_results: int) -> str:
                 """
                 SELECT e.memory_id, 1 - (e.vector <=> $1) AS similarity
                 FROM embeddings e
+                JOIN memories m ON m.id = e.memory_id
+                WHERE m.agent_name = $3
                 ORDER BY e.vector <=> $1
                 LIMIT $2
                 """,
-                np.array(query_vec, dtype=np.float32), max_results * 2,
+                np.array(query_vec, dtype=np.float32), max_results * 2, agent_name,
             )
             if rows:
                 max_sim = max(r["similarity"] for r in rows) or 1.0

@@ -37,23 +37,24 @@ def _get_default_session_mgr() -> SessionManager:
 
 
 def _resolve(agent: Agent | None = None):
-    """Resolve session manager, system prompt, and memory dir from agent or defaults."""
+    """Resolve session manager, system prompt, memory dir, and agent name from agent or defaults."""
     if agent is not None:
         session_mgr = agent.session_mgr or _get_default_session_mgr()
-        return session_mgr, agent.system_prompt, agent.memory_dir
-    return _get_default_session_mgr(), None, None
+        return session_mgr, agent.system_prompt, agent.memory_dir, agent.name
+    return _get_default_session_mgr(), None, None, "default"
 
 
 async def stream(session_key: str, user_content: Content,
                  agent: Agent | None = None) -> AsyncIterator[str]:
     """Unified entry: stream LLM reply with tool loop."""
-    session_mgr, system_prompt, memory_dir = _resolve(agent)
+    session_mgr, system_prompt, memory_dir, agent_name = _resolve(agent)
     processor = StreamProcessor(
         provider=_get_provider(),
         session=session_mgr,
         session_key=session_key,
         system_prompt=system_prompt,
         memory_dir=memory_dir,
+        agent_name=agent_name,
     )
     async for chunk in processor.process(user_content):
         yield chunk

@@ -809,7 +809,8 @@ async def run_google_calendar(action: str, **kwargs) -> str:
         return f"Error: Google Calendar operation failed — {e}"
 
 
-async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None) -> str:
+async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None,
+                           agent_name: str = "default") -> str:
     if tool_name == "exec":
         return await run_exec(
             command=tool_input["command"],
@@ -821,12 +822,14 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None) ->
             content=tool_input["content"],
             tags=tool_input.get("tags"),
             memory_dir=memory_dir,
+            agent_name=agent_name,
         )
     if tool_name == "memory_search":
         return await memory.search(
             query=tool_input["query"],
             max_results=tool_input.get("max_results", 10),
             memory_dir=memory_dir,
+            agent_name=agent_name,
         )
     if tool_name == "claude_code":
         timeout = min(max(tool_input.get("timeout", 300), 30), 600)

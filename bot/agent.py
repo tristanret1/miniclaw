@@ -83,6 +83,10 @@ def _load_from_json() -> list[Agent] | None:
             log.warning("skipping agent entry with missing name/token: %s", entry)
             continue
 
+        if not entry.get("enabled", True):
+            log.info("agent '%s' is disabled, skipping", name)
+            continue
+
         workspace_path = Path(workspace)
         if not workspace_path.is_absolute():
             workspace_path = PROJECT_ROOT / workspace_path
@@ -149,13 +153,25 @@ def _load_from_env() -> list[Agent]:
     return agents
 
 
-def load_agents() -> list[Agent]:
-    """Load agents from agents.json first, falling back to .env."""
+def load_agents(only: list[str] | None = None) -> list[Agent]:
+    """Load agents from agents.json first, falling back to .env.
+
+    Args:
+        only: If provided, only load agents whose names are in this list.
+    """
     # Prefer agents.json
     agents = _load_from_json()
-    if agents:
-        return agents
+    if not agents:
+        log.info("agents.json not found or empty, falling back to .env")
+        agents = _load_from_env()
 
-    # Fall back to .env
-    log.info("agents.json not found or empty, falling back to .env")
-    return _load_from_env()
+    if only:
+        names = {n.lower() for n in only}
+        agents = [a for a in agents if a.name.lower() in names]
+        if not agents:
+            raise SystemExit(f"No matching agents for --only {', '.join(only)}")
+
+    if not agents:
+        raise SystemExit("No enabled agents found. Check agents.json or .env.")
+
+    return agents

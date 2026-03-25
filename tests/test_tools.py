@@ -60,7 +60,7 @@ class TestHandleToolCall:
             mock_mem.save = AsyncMock(return_value="Saved #1")
             result = await handle_tool_call("memory_save", {"content": "test"})
             assert result == "Saved #1"
-            mock_mem.save.assert_called_once_with(content="test", tags=None, memory_dir=None)
+            mock_mem.save.assert_called_once_with(content="test", tags=None, memory_dir=None, agent_name="default")
 
     async def test_memory_search_routing(self):
         with patch("bot.tools.memory") as mock_mem:

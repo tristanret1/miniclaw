@@ -88,9 +88,26 @@ async def ensure_schema() -> None:
                 content TEXT NOT NULL,
                 tags TEXT,
                 source TEXT,
+                agent_name TEXT NOT NULL DEFAULT 'default',
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
             )
         """)
+
+        # Add agent_name column if upgrading from older schema
+        agent_col_exists = await conn.fetchval("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'memories' AND column_name = 'agent_name'
+            )
+        """)
+        if not agent_col_exists:
+            await conn.execute("""
+                ALTER TABLE memories ADD COLUMN agent_name TEXT NOT NULL DEFAULT 'default'
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_memories_agent
+                ON memories (agent_name)
+            """)
 
         # Add tsvector generated column if it doesn't exist
         col_exists = await conn.fetchval("""

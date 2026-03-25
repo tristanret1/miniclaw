@@ -23,12 +23,13 @@ class StreamProcessor:
     """Process LLM streaming responses: tool loop, content accumulation, auto-flush."""
 
     def __init__(self, provider: BaseProvider, session: SessionManager, session_key: str,
-                 system_prompt: str | None = None, memory_dir=None):
+                 system_prompt: str | None = None, memory_dir=None, agent_name: str = "default"):
         self.provider = provider
         self.session = session
         self.session_key = session_key
         self._system_prompt = self._build_system_prompt(system_prompt or SYSTEM_PROMPT)
         self._memory_dir = memory_dir
+        self._agent_name = agent_name
 
     @staticmethod
     def _build_system_prompt(base: str) -> str:
@@ -169,7 +170,8 @@ class StreamProcessor:
         async def _run_tool(block: dict) -> dict:
             try:
                 result = await handle_tool_call(block["name"], block.get("input", {}),
-                                               memory_dir=self._memory_dir)
+                                               memory_dir=self._memory_dir,
+                                               agent_name=self._agent_name)
                 return {
                     "type": "tool_result",
                     "tool_use_id": block["id"],
@@ -219,7 +221,8 @@ class StreamProcessor:
                 for block in content:
                     if block["type"] == "tool_use":
                         result = await handle_tool_call(block["name"], block["input"],
-                                                        memory_dir=self._memory_dir)
+                                                        memory_dir=self._memory_dir,
+                                                        agent_name=self._agent_name)
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": block["id"],

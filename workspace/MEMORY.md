@@ -1,6 +1,6 @@
 # Memory
 
-Bot's long-term memory index. Memories are stored in `memory/memory.db` (SQLite + FTS5) and daily logs in `memory/YYYY-MM-DD.md`.
+Bot's long-term memory index. Memories are stored in PostgreSQL (Neon) with agent-level isolation (`agent_name='default'`). Daily logs are still written to `memory/YYYY-MM-DD.md`.
 
 ## Known Users
 

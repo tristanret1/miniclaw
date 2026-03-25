@@ -7,6 +7,16 @@ if len(sys.argv) > 1 and sys.argv[1] == "agents":
     cli_main(sys.argv[2:])
     sys.exit(0)
 
+# Parse --only flag for selective agent startup
+_only_agents: list[str] | None = None
+for i, arg in enumerate(sys.argv[1:], 1):
+    if arg == "--only" and i + 1 < len(sys.argv):
+        _only_agents = [n.strip() for n in sys.argv[i + 1].split(",") if n.strip()]
+        break
+    if arg.startswith("--only="):
+        _only_agents = [n.strip() for n in arg.split("=", 1)[1].split(",") if n.strip()]
+        break
+
 env_path = Path(__file__).parent / ".env"
 creds_path = Path(__file__).parent / ".credentials.json"
 
@@ -32,7 +42,8 @@ async def main():
     else:
         print("Using SQLite backend (local)")
 
-    agents = load_agents()
+    agents = load_agents(only=_only_agents)
+    print(f"Starting {len(agents)} agent(s): {', '.join(a.name for a in agents)}")
 
     # Initialize per-agent runtime state
     for agent in agents:
