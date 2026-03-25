@@ -604,6 +604,8 @@ pytest -k "test_tool"              # pattern match
 ## Active Technologies
 - Python 3.13+ + discord.py, httpx, google-auth-oauthlib, google-api-python-clien (001-google-calendar-plugin)
 - SQLite (existing cron_jobs table for reminders), file-based credentials (.google_credentials.json) (001-google-calendar-plugin)
+- Python 3.13+ + discord.py, httpx, asyncpg (new), pgvector-python (new) (002-postgres-storage)
+- PostgreSQL 16 (Neon serverless) with pgvector extension; SQLite fallback (002-postgres-storage)
 
 ## Recent Changes
 - 001-google-calendar-plugin: Added Python 3.13+ + discord.py, httpx, google-auth-oauthlib, google-api-python-clien
