@@ -57,14 +57,14 @@ class TestHandleToolCall:
 
     async def test_memory_save_routing(self):
         with patch("bot.tools.memory") as mock_mem:
-            mock_mem.save.return_value = "Saved #1"
+            mock_mem.save = AsyncMock(return_value="Saved #1")
             result = await handle_tool_call("memory_save", {"content": "test"})
             assert result == "Saved #1"
             mock_mem.save.assert_called_once_with(content="test", tags=None, memory_dir=None)
 
     async def test_memory_search_routing(self):
         with patch("bot.tools.memory") as mock_mem:
-            mock_mem.search.return_value = "found stuff"
+            mock_mem.search = AsyncMock(return_value="found stuff")
             result = await handle_tool_call("memory_search", {"query": "test"})
             assert result == "found stuff"
 

@@ -1,4 +1,7 @@
-"""Memory system — SQLite + FTS5 (BM25) + optional vector embeddings (hybrid search)."""
+"""Memory system — SQLite + FTS5 (BM25) + optional vector embeddings (hybrid search).
+
+Supports PostgreSQL backend when DATABASE_URL is set (via bot.db).
+"""
 
 import json
 import sqlite3
@@ -157,9 +160,19 @@ def _append_to_daily_log(content: str, tags: list[str] | None, memory_dir: Path 
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def save(content: str, tags: list[str] | None = None, source: str = "agent",
-         memory_dir: Path | None = None) -> str:
-    """Save a memory entry to SQLite + daily Markdown log."""
+async def save(content: str, tags: list[str] | None = None, source: str = "agent",
+               memory_dir: Path | None = None) -> str:
+    """Save a memory entry to DB + daily Markdown log."""
+    from bot.db import use_postgres
+
+    if use_postgres():
+        return await _pg_save(content, tags, source, memory_dir)
+    return _sqlite_save(content, tags, source, memory_dir)
+
+
+def _sqlite_save(content: str, tags: list[str] | None, source: str,
+                 memory_dir: Path | None) -> str:
+    """Save via SQLite (original path)."""
     now = datetime.now().isoformat()
     tags_str = ", ".join(tags) if tags else ""
 
@@ -171,7 +184,6 @@ def save(content: str, tags: list[str] | None = None, source: str = "agent",
         )
         memory_id = cur.lastrowid
 
-        # Generate and store embedding
         vec = _get_embedding(content)
         if vec:
             conn.execute(
@@ -189,8 +201,41 @@ def save(content: str, tags: list[str] | None = None, source: str = "agent",
     return f"Saved memory #{memory_id} to {logfile}"
 
 
-def search(query: str, max_results: int = 10, memory_dir: Path | None = None) -> str:
+async def _pg_save(content: str, tags: list[str] | None, source: str,
+                   memory_dir: Path | None) -> str:
+    """Save via PostgreSQL."""
+    from bot.db import get_pool
+
+    tags_str = ", ".join(tags) if tags else ""
+    pool = await get_pool()
+
+    async with pool.acquire() as conn:
+        memory_id = await conn.fetchval(
+            "INSERT INTO memories (content, tags, source) VALUES ($1, $2, $3) RETURNING id",
+            content, tags_str or None, source,
+        )
+
+        vec = _get_embedding(content)
+        if vec:
+            import numpy as np
+            await conn.execute(
+                "INSERT INTO embeddings (memory_id, vector) VALUES ($1, $2)",
+                memory_id, np.array(vec, dtype=np.float32),
+            )
+
+    logfile = _append_to_daily_log(content, tags, memory_dir)
+    log.info("memory saved #%d → %s (%d chars, tags=%s, embedding=%s) [pg]",
+             memory_id, logfile, len(content), tags, "yes" if vec else "no")
+    return f"Saved memory #{memory_id} to {logfile}"
+
+
+async def search(query: str, max_results: int = 10, memory_dir: Path | None = None) -> str:
     """Hybrid search: BM25 + vector similarity when embeddings available."""
+    from bot.db import use_postgres
+
+    if use_postgres():
+        return await _pg_search(query, max_results)
+
     conn = _get_db(memory_dir)
     try:
         return _hybrid_search(conn, query, max_results)
@@ -306,6 +351,88 @@ def _merge_scores(
         merged.append((mid, b + v))
     merged.sort(key=lambda x: -x[1])
     return merged[:max_results]
+
+
+# ── PostgreSQL search ─────────────────────────────────────────────────────────
+
+async def _pg_search(query: str, max_results: int) -> str:
+    """Hybrid search via PostgreSQL: tsvector FTS + pgvector cosine similarity."""
+    from bot.db import get_pool
+
+    pool = await get_pool()
+
+    # BM25-like search via tsvector
+    bm25_results: dict[int, float] = {}
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, ts_rank_cd(content_tsv, plainto_tsquery('english', $1)) AS rank
+            FROM memories
+            WHERE content_tsv @@ plainto_tsquery('english', $1)
+            ORDER BY rank DESC
+            LIMIT $2
+            """,
+            query, max_results * 2,
+        )
+        if rows:
+            max_rank = max(r["rank"] for r in rows) or 1.0
+            bm25_results = {r["id"]: r["rank"] / max_rank for r in rows}
+
+    # Vector search (if embeddings available)
+    vec_results: dict[int, float] = {}
+    query_vec = _get_embedding(query) if _has_embeddings() else None
+    if query_vec:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT e.memory_id, 1 - (e.vector <=> $1::vector) AS similarity
+                FROM embeddings e
+                ORDER BY e.vector <=> $1::vector
+                LIMIT $2
+                """,
+                str(query_vec), max_results * 2,
+            )
+            if rows:
+                max_sim = max(r["similarity"] for r in rows) or 1.0
+                vec_results = {r["memory_id"]: r["similarity"] / max_sim for r in rows if r["similarity"] > 0}
+
+    if not bm25_results and not vec_results:
+        return f"No matches for: {query}"
+
+    # Merge scores
+    if vec_results and bm25_results:
+        merged = _merge_scores(bm25_results, vec_results, max_results)
+        search_type = "hybrid"
+    elif vec_results:
+        merged = sorted(vec_results.items(), key=lambda x: -x[1])[:max_results]
+        search_type = "vector"
+    else:
+        merged = sorted(bm25_results.items(), key=lambda x: -x[1])[:max_results]
+        search_type = "bm25"
+
+    ids = [mid for mid, _ in merged]
+    if not ids:
+        return f"No matches for: {query}"
+
+    # Fetch full content
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, content, tags, created_at FROM memories WHERE id = ANY($1::bigint[])",
+            ids,
+        )
+    row_map = {r["id"]: r for r in rows}
+
+    lines = []
+    for mid, score in merged:
+        row = row_map.get(mid)
+        if not row:
+            continue
+        tag_part = f" [{row['tags']}]" if row["tags"] else ""
+        created = row["created_at"].strftime("%Y-%m-%d") if hasattr(row["created_at"], "strftime") else str(row["created_at"])[:10]
+        lines.append(f"[#{mid} {created}{tag_part} score={score:.2f}] {row['content']}")
+
+    log.info("memory search [pg] (%s) '%s' → %d result(s)", search_type, query, len(lines))
+    return "\n".join(lines)
 
 
 # ── Auto-flush: summarize conversation before context gets too long ───────────

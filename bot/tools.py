@@ -502,15 +502,25 @@ GOOGLE_CALENDAR_TOOL = {
                 "enum": ["phone_call", "sms"],
                 "description": "Primary reminder delivery channel. Default: 'phone_call'. Cascade fallback: phone_call → sms → discord.",
             },
+            "attendees": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "List of attendee email addresses. Optional, for create and update actions.",
+            },
             "updates": {
                 "type": "object",
-                "description": "Fields to update (for action=update). Keys: title, start_time, end_time, description, location.",
+                "description": "Fields to update (for action=update). Keys: title, start_time, end_time, description, location, attendees.",
                 "properties": {
                     "title": {"type": "string"},
                     "start_time": {"type": "string"},
                     "end_time": {"type": "string"},
                     "description": {"type": "string"},
                     "location": {"type": "string"},
+                    "attendees": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of attendee email addresses.",
+                    },
                 },
             },
         },
@@ -725,6 +735,7 @@ async def run_google_calendar(action: str, **kwargs) -> str:
                 end_time=kwargs.get("end_time", ""),
                 description=kwargs.get("description", ""),
                 location=kwargs.get("location", ""),
+                attendees=kwargs.get("attendees"),
             )
 
             result = (
@@ -738,7 +749,7 @@ async def run_google_calendar(action: str, **kwargs) -> str:
                 reminder_minutes = kwargs.get("reminder_minutes", 15)
                 reminder_channel = kwargs.get("reminder_channel", "phone_call")
                 channel_id = kwargs.get("_channel_id", "")
-                gcal._schedule_urgent_reminder(
+                await gcal._schedule_urgent_reminder(
                     event_id=created["id"],
                     event_title=created["title"],
                     event_start=created["start"],
@@ -767,7 +778,7 @@ async def run_google_calendar(action: str, **kwargs) -> str:
                 job_id = gcal._find_reminder_job(event_id)
                 if job_id:
                     from bot import cron
-                    cron.delete_job(job_id)
+                    await cron.delete_job(job_id)
                     # Note: Claude should re-create the reminder if still needed
 
             updated = gcal.update_event(event_id=event_id, updates=updates)
@@ -783,7 +794,7 @@ async def run_google_calendar(action: str, **kwargs) -> str:
             if calendar == "work":
                 return "Error: Work calendar is read-only. Use Google Calendar directly for work events."
 
-            return gcal.delete_event(event_id=event_id)
+            return await gcal.delete_event(event_id=event_id)
 
         return f"Error: Unknown action '{action}'. Valid actions: list, create, update, delete."
 
@@ -806,13 +817,13 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None) ->
             workdir=tool_input.get("workdir"),
         )
     if tool_name == "memory_save":
-        return memory.save(
+        return await memory.save(
             content=tool_input["content"],
             tags=tool_input.get("tags"),
             memory_dir=memory_dir,
         )
     if tool_name == "memory_search":
-        return memory.search(
+        return await memory.search(
             query=tool_input["query"],
             max_results=tool_input.get("max_results", 10),
             memory_dir=memory_dir,
@@ -832,7 +843,7 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None) ->
         )
     if tool_name == "cron_create":
         from bot import cron
-        return cron.create_job(
+        return await cron.create_job(
             name=tool_input["name"],
             schedule_type=tool_input["schedule_type"],
             schedule_value=tool_input["schedule_value"],
@@ -846,12 +857,12 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None) ->
         )
     if tool_name == "cron_list":
         from bot import cron
-        return cron.list_jobs(
+        return await cron.list_jobs(
             include_disabled=tool_input.get("include_disabled", False),
         )
     if tool_name == "cron_delete":
         from bot import cron
-        return cron.delete_job(job_id=tool_input["job_id"])
+        return await cron.delete_job(job_id=tool_input["job_id"])
     if tool_name == "sms":
         return await run_sms(
             to=tool_input["to"],

@@ -1,8 +1,19 @@
 # Changelog
 
-## v0.3.0 (planned)
+## v0.3.0 (2026-03-24)
 
 ### Changes
+- **PostgreSQL storage**: migrate memory, cron, and session storage to PostgreSQL (Neon serverless)
+  - `bot/db.py` — database backend factory: asyncpg connection pool, pgvector type registration, schema auto-creation, retry logic for Neon cold starts
+  - `bot/memory.py` — PostgreSQL code path: tsvector full-text search (`ts_rank_cd` + `plainto_tsquery`), pgvector cosine similarity (`<=>` with HNSW index), hybrid merge (BM25=0.4, vector=0.6)
+  - `bot/session.py` — PostgreSQL code path: session message persistence and retrieval via asyncpg
+  - `bot/cron.py` — PostgreSQL code path: cron job CRUD, scheduler tick, and state updates via asyncpg
+  - `scripts/migrate_to_postgres.py` — idempotent SQLite → PostgreSQL migration script (`ON CONFLICT DO NOTHING`)
+- **Dual-backend**: all storage modules gated behind `db.use_postgres()`; SQLite fallback when `DATABASE_URL` is not set (zero behavioral change)
+- `DATABASE_URL` env var — single config switch between SQLite (local) and PostgreSQL (remote)
+- New dependencies: `asyncpg>=0.30.0`, `pgvector>=0.3.0`
+- Startup log: "Using PostgreSQL backend (Neon)" or "Using SQLite backend (local)"
+- Pool cleanup on shutdown (`close_pool()`)
 - Skill system: load SKILL.md from `skills/` directory, Clawhub format compatible
 - Skill prompt injection into system prompt
 - Slash command dispatch (`/skill-name args`)

@@ -14,52 +14,52 @@ from bot.memory import (
 
 
 class TestSaveAndSearch:
-    def test_save_and_search_bm25(self, memory_db):
-        save("The user prefers dark mode", tags=["preference"])
-        result = search("dark mode")
+    async def test_save_and_search_bm25(self, memory_db):
+        await save("The user prefers dark mode", tags=["preference"])
+        result = await search("dark mode")
         assert "dark mode" in result
         assert "#" in result  # contains memory ID
 
-    def test_save_with_tags(self, memory_db):
-        save("Important fact", tags=["fact", "important"])
-        result = search("important")
+    async def test_save_with_tags(self, memory_db):
+        await save("Important fact", tags=["fact", "important"])
+        result = await search("important")
         assert "fact" in result
 
-    def test_search_no_results(self, memory_db):
-        result = search("nonexistent_query_xyz")
+    async def test_search_no_results(self, memory_db):
+        result = await search("nonexistent_query_xyz")
         assert "No matches" in result
 
-    def test_multiple_saves_ranked(self, memory_db):
-        save("Python is a programming language")
-        save("Python snake is a reptile")
-        save("I love programming in Python every day")
-        result = search("Python programming")
+    async def test_multiple_saves_ranked(self, memory_db):
+        await save("Python is a programming language")
+        await save("Python snake is a reptile")
+        await save("I love programming in Python every day")
+        result = await search("Python programming")
         # Should find results
         assert "Python" in result
 
-    def test_daily_log_created(self, memory_db):
+    async def test_daily_log_created(self, memory_db):
         _, mem_dir = memory_db
-        save("test log entry")
+        await save("test log entry")
         md_files = list(mem_dir.glob("*.md"))
         assert len(md_files) == 1
         content = md_files[0].read_text()
         assert "test log entry" in content
 
-    def test_daily_log_appends(self, memory_db):
+    async def test_daily_log_appends(self, memory_db):
         _, mem_dir = memory_db
-        save("first entry")
-        save("second entry")
+        await save("first entry")
+        await save("second entry")
         md_files = list(mem_dir.glob("*.md"))
         assert len(md_files) == 1
         content = md_files[0].read_text()
         assert "first entry" in content
         assert "second entry" in content
 
-    def test_fts5_special_chars_fallback(self, memory_db):
+    async def test_fts5_special_chars_fallback(self, memory_db):
         """FTS5 special chars (AND/OR/NOT) should not crash."""
-        save("some content here")
+        await save("some content here")
         # These should not raise, even if FTS5 interprets them specially
-        result = search("AND OR NOT")
+        result = await search("AND OR NOT")
         # May or may not find results, but should not crash
         assert isinstance(result, str)
 

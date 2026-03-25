@@ -175,6 +175,7 @@ def create_event(
     end_time: str = "",
     description: str = "",
     location: str = "",
+    attendees: list[str] | None = None,
 ) -> dict:
     """Create an event on the Life calendar. Returns created event dict."""
     if not GOOGLE_CALENDAR_LIFE_ID:
@@ -205,6 +206,8 @@ def create_event(
         event_body["description"] = description
     if location:
         event_body["location"] = location
+    if attendees:
+        event_body["attendees"] = [{"email": e} for e in attendees]
 
     result = (
         service.events()
@@ -242,6 +245,8 @@ def update_event(event_id: str, updates: dict) -> dict:
         if end_dt.tzinfo is None:
             end_dt = end_dt.replace(tzinfo=tz)
         patch_body["end"] = {"dateTime": end_dt.isoformat(), "timeZone": CRON_TIMEZONE}
+    if "attendees" in updates:
+        patch_body["attendees"] = [{"email": e} for e in updates["attendees"]]
 
     result = (
         service.events()
@@ -254,7 +259,7 @@ def update_event(event_id: str, updates: dict) -> dict:
     return updated
 
 
-def delete_event(event_id: str) -> str:
+async def delete_event(event_id: str) -> str:
     """Delete a Life calendar event. Returns confirmation string."""
     if not GOOGLE_CALENDAR_LIFE_ID:
         raise RuntimeError("Life calendar not configured (GOOGLE_CALENDAR_LIFE_ID)")
@@ -268,14 +273,14 @@ def delete_event(event_id: str) -> str:
     job_id = _find_reminder_job(event_id)
     if job_id:
         from bot import cron
-        cron.delete_job(job_id)
+        await cron.delete_job(job_id)
         log.info("Deleted reminder job %s for event %s", job_id, event_id)
 
     log.info("Deleted event %s from Life calendar", event_id)
     return f"Event {event_id} deleted from Life calendar."
 
 
-def _schedule_urgent_reminder(
+async def _schedule_urgent_reminder(
     event_id: str,
     event_title: str,
     event_start: str,
@@ -305,7 +310,7 @@ def _schedule_urgent_reminder(
 
     context = f"calendar_event_id:{event_id}"
 
-    job_result = cron.create_job(
+    job_result = await cron.create_job(
         name=f"Reminder: {event_title}",
         schedule_type="at",
         schedule_value=fire_at.isoformat(),

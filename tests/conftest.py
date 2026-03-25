@@ -27,6 +27,7 @@ def pytest_configure(config):
         "AUTO_REPLY_CHANNELS": "",
         "AUTO_REPLY_CHANCE": "0.0",
         "AUTO_REPLY_KEYWORDS": "",
+        "DATABASE_URL": "",
         "PROVIDER": "anthropic",
         "CODEX_MODEL": "gpt-5.3-codex",
         "SMS_ENABLED": "false",

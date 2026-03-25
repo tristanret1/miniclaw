@@ -1,10 +1,11 @@
-"""Session management — in-memory cache + SQLite persistence."""
+"""Session management — in-memory cache + SQLite/PostgreSQL persistence."""
 
 import json
 import sqlite3
 from pathlib import Path
 
 from bot.config import MAX_HISTORY, PROVIDER, WORKSPACE_DIR
+from bot.db import use_postgres
 from bot.logger import get_logger
 from bot.message import Content, Message
 from bot.provider.transform import sanitize
@@ -44,8 +45,11 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def _load_from_db(session_key: str, limit: int, db_path: Path | None = None) -> list[Message]:
+async def _load_from_db(session_key: str, limit: int, db_path: Path | None = None) -> list[Message]:
     """Load the most recent messages for a session from DB."""
+    if use_postgres():
+        return await _pg_load(session_key, limit)
+
     conn = _get_db(db_path)
     rows = conn.execute(
         "SELECT role, content FROM ("
@@ -68,12 +72,48 @@ def _load_from_db(session_key: str, limit: int, db_path: Path | None = None) -> 
     return history
 
 
-def _persist(session_key: str, role: str, content: Content, db_path: Path | None = None) -> None:
+async def _pg_load(session_key: str, limit: int) -> list[Message]:
+    """Load recent messages from PostgreSQL."""
+    from bot.db import get_pool
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT role, content FROM ("
+            "  SELECT role, content, id FROM messages"
+            "  WHERE session_key = $1 ORDER BY id DESC LIMIT $2"
+            ") sub ORDER BY id ASC",
+            session_key, limit,
+        )
+
+    history: list[Message] = []
+    for row in rows:
+        try:
+            content = json.loads(row["content"])
+        except (json.JSONDecodeError, TypeError):
+            content = row["content"]
+        history.append({"role": row["role"], "content": content})
+
+    if history:
+        log.info("loaded %d messages for session %s [pg]", len(history), session_key)
+    return history
+
+
+async def _persist(session_key: str, role: str, content: Content, db_path: Path | None = None) -> None:
     """Persist a single message to DB."""
     if isinstance(content, (list, dict)):
         content_str = json.dumps(content, ensure_ascii=False)
     else:
         content_str = content
+
+    if use_postgres():
+        from bot.db import get_pool
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO messages (session_key, role, content) VALUES ($1, $2, $3)",
+                session_key, role, content_str,
+            )
+        return
 
     conn = _get_db(db_path)
     conn.execute(
@@ -83,8 +123,17 @@ def _persist(session_key: str, role: str, content: Content, db_path: Path | None
     conn.commit()
 
 
-def clear_session(session_key: str, db_path: Path | None = None) -> int:
+async def clear_session(session_key: str, db_path: Path | None = None) -> int:
     """Delete all messages for a session. Returns count deleted."""
+    if use_postgres():
+        from bot.db import get_pool
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute("DELETE FROM messages WHERE session_key = $1", session_key)
+            count = int(result.split()[-1])  # "DELETE N"
+        log.info("cleared %d messages for session %s [pg]", count, session_key)
+        return count
+
     conn = _get_db(db_path)
     cur = conn.execute("DELETE FROM messages WHERE session_key = ?", (session_key,))
     conn.commit()
@@ -93,17 +142,17 @@ def clear_session(session_key: str, db_path: Path | None = None) -> int:
 
 
 class SessionManager:
-    """Session management: in-memory cache + SQLite persistence."""
+    """Session management: in-memory cache + SQLite/PostgreSQL persistence."""
 
     def __init__(self, db_path: Path | None = None):
         self._db_path = db_path
         self._cache: dict[str, list[Message]] = {}
         self._flushed: set[str] = set()
 
-    def get_history(self, session_key: str) -> list[Message]:
+    async def get_history(self, session_key: str) -> list[Message]:
         """Get session history, loading from DB on first access."""
         if session_key not in self._cache:
-            raw = _load_from_db(session_key, MAX_HISTORY * 2, self._db_path)
+            raw = await _load_from_db(session_key, MAX_HISTORY * 2, self._db_path)
             sanitized = sanitize(raw, PROVIDER)
             if len(raw) != len(sanitized):
                 log.warning(
@@ -113,15 +162,15 @@ class SessionManager:
             self._cache[session_key] = sanitized
         return self._cache[session_key]
 
-    def append(self, session_key: str, role: str, content: Content) -> None:
+    async def append(self, session_key: str, role: str, content: Content) -> None:
         """Append a message to cache + DB."""
-        history = self.get_history(session_key)
+        history = await self.get_history(session_key)
         history.append({"role": role, "content": content})
-        _persist(session_key, role, content, self._db_path)
+        await _persist(session_key, role, content, self._db_path)
 
-    def trim(self, session_key: str) -> None:
+    async def trim(self, session_key: str) -> None:
         """Trim history if it exceeds the max limit."""
-        history = self.get_history(session_key)
+        history = await self.get_history(session_key)
         before = len(history)
         if before > MAX_HISTORY * 2:
             history[:] = sanitize(history[-(MAX_HISTORY * 2):], PROVIDER)
@@ -130,18 +179,18 @@ class SessionManager:
                 session_key, before, len(history), MAX_HISTORY * 2,
             )
 
-    def clear(self, session_key: str) -> int:
+    async def clear(self, session_key: str) -> int:
         """Clear session from cache and DB."""
         self._cache.pop(session_key, None)
         self._flushed.discard(session_key)
-        return clear_session(session_key, self._db_path)
+        return await clear_session(session_key, self._db_path)
 
-    def should_flush(self, session_key: str) -> bool:
+    async def should_flush(self, session_key: str) -> bool:
         """Check if auto-flush should trigger for this session."""
         if session_key in self._flushed:
             return False
         from bot.memory import should_flush as check_flush
-        return check_flush(self.get_history(session_key))
+        return check_flush(await self.get_history(session_key))
 
     def mark_flushed(self, session_key: str) -> None:
         self._flushed.add(session_key)
