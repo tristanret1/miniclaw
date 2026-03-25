@@ -70,6 +70,24 @@ def should_auto_reply(message: discord.Message, bot_user) -> bool:
     return random.random() < AUTO_REPLY_CHANCE
 
 
+GREETING_CHANNEL_ID = 1482258781860532344
+
+
+async def _send_greeting(bot: discord.Client, agent: Agent) -> None:
+    """Send a startup greeting to the designated channel."""
+    try:
+        channel = bot.get_channel(GREETING_CHANNEL_ID)
+        if channel is None:
+            channel = await bot.fetch_channel(GREETING_CHANNEL_ID)
+
+        session_key = f"{GREETING_CHANNEL_ID}:system"
+        greeting = await llm.reply(session_key, "你刚刚上线了，用一句话跟大家打个招呼吧", agent=agent)
+        await channel.send(greeting[:2000])
+        log.info("startup greeting sent to channel %s", GREETING_CHANNEL_ID)
+    except Exception as e:
+        log.error("failed to send startup greeting: %s", e)
+
+
 def create_bot(agent: Agent) -> discord.Client:
     """Create a Discord client bound to a specific agent."""
     intents = discord.Intents.default()
@@ -111,6 +129,9 @@ def create_bot(agent: Agent) -> discord.Client:
         print(f"Agent '{agent.name}' online as {bot.user}")
         if AUTO_REPLY_ENABLED:
             print(f"Auto-reply enabled with {AUTO_REPLY_CHANCE*100}% chance")
+
+        # Send startup greeting
+        await _send_greeting(bot, agent)
 
         # Start cron scheduler only once (first agent)
         if not _cron_started:
