@@ -87,10 +87,17 @@ As a bot operator migrating to PostgreSQL, I want a migration tool to copy exist
 
 ### Edge Cases
 
-- What happens when PostgreSQL is temporarily unreachable during a save operation? The system should retry or fail gracefully with an error message, not crash.
+- What happens when PostgreSQL is temporarily unreachable during a save operation (e.g., Neon serverless cold start)? The system should retry or fail gracefully with an error message, not crash.
 - What happens when the database schema is outdated? The system should auto-create tables on startup.
 - What happens when full-text search queries contain special characters that differ between SQLite FTS5 and PostgreSQL tsvector? The search layer should handle syntax normalization.
 - What happens when the migration script encounters corrupt or incomplete SQLite data? It should skip invalid records with warnings, not abort entirely.
+
+## Clarifications
+
+### Session 2026-03-24
+
+- Q: Vector embedding storage approach — pgvector extension or raw BYTEA blobs? → A: pgvector extension required for native vector indexing and similarity search.
+- Q: PostgreSQL hosting target? → A: Neon (serverless PostgreSQL, free tier, pgvector included).
 
 ## Requirements *(mandatory)*
 
@@ -99,7 +106,7 @@ As a bot operator migrating to PostgreSQL, I want a migration tool to copy exist
 - **FR-001**: System MUST support PostgreSQL as a storage backend for memories, cron jobs, and session history when `DATABASE_URL` is configured.
 - **FR-002**: System MUST fall back to SQLite when no `DATABASE_URL` is set (zero-config local development).
 - **FR-003**: System MUST provide full-text search for memories in PostgreSQL with equivalent relevance to the current BM25/FTS5 implementation.
-- **FR-004**: System MUST store and retrieve vector embeddings in PostgreSQL for hybrid memory search.
+- **FR-004**: System MUST store and retrieve vector embeddings in PostgreSQL using the pgvector extension for native indexed vector similarity search.
 - **FR-005**: System MUST auto-create database tables on first connection (no manual DDL required).
 - **FR-006**: System MUST provide a migration script to copy existing SQLite data to PostgreSQL.
 - **FR-007**: System MUST handle PostgreSQL connection failures gracefully (log errors, surface to user, no crashes).
