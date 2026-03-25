@@ -287,6 +287,11 @@ def create_bot(agent: Agent) -> discord.Client:
         if message.author == bot.user:
             return
 
+        # 5% chance to ignore messages from other bots
+        if message.author.bot and random.random() < 0.05:
+            log.debug("ignoring bot message from %s (5%% skip)", message.author)
+            return
+
         if not _should_handle(message):
             return
 
