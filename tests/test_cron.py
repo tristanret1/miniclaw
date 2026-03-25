@@ -99,8 +99,8 @@ class TestCronCRUD:
         monkeypatch.setattr("bot.cron._db", None)
         monkeypatch.setattr("bot.cron._scheduler", None)
 
-    def test_create_job(self):
-        result = create_job(
+    async def test_create_job(self):
+        result = await create_job(
             name="test-job",
             schedule_type="every",
             schedule_value="1h",
@@ -110,74 +110,74 @@ class TestCronCRUD:
         assert "Created job" in result
         assert "test-job" in result
 
-    def test_create_invalid_schedule_type(self):
-        result = create_job(
+    async def test_create_invalid_schedule_type(self):
+        result = await create_job(
             name="bad", schedule_type="bogus",
             schedule_value="1h", payload="hi", channel_id="123",
         )
         assert "Error" in result
 
-    def test_create_invalid_schedule_value(self):
-        result = create_job(
+    async def test_create_invalid_schedule_value(self):
+        result = await create_job(
             name="bad", schedule_type="every",
             schedule_value="not-a-duration", payload="hi", channel_id="123",
         )
         assert "Error" in result
 
-    def test_list_jobs_empty(self):
-        result = list_jobs()
+    async def test_list_jobs_empty(self):
+        result = await list_jobs()
         assert "No scheduled jobs" in result
 
-    def test_list_jobs_after_create(self):
-        create_job(
+    async def test_list_jobs_after_create(self):
+        await create_job(
             name="lister", schedule_type="every",
             schedule_value="30m", payload="hi", channel_id="123",
         )
-        result = list_jobs()
+        result = await list_jobs()
         assert "lister" in result
         assert "every 30m" in result
 
-    def test_delete_job_by_id(self):
-        result = create_job(
+    async def test_delete_job_by_id(self):
+        result = await create_job(
             name="deleteme", schedule_type="every",
             schedule_value="1h", payload="hi", channel_id="123",
         )
         # Extract job ID from result
         job_id = result.split("id=")[1].split(")")[0]
-        del_result = delete_job(job_id)
+        del_result = await delete_job(job_id)
         assert "Deleted" in del_result
-        assert list_jobs() == "No scheduled jobs."
+        assert await list_jobs() == "No scheduled jobs."
 
-    def test_delete_job_by_name(self):
-        create_job(
+    async def test_delete_job_by_name(self):
+        await create_job(
             name="byname", schedule_type="every",
             schedule_value="1h", payload="hi", channel_id="123",
         )
-        del_result = delete_job("byname")
+        del_result = await delete_job("byname")
         assert "Deleted" in del_result
 
-    def test_delete_nonexistent(self):
-        result = delete_job("nope")
+    async def test_delete_nonexistent(self):
+        result = await delete_job("nope")
         assert "No job found" in result
 
-    def test_create_with_session_mode(self):
-        result = create_job(
+    async def test_create_with_session_mode(self):
+        result = await create_job(
             name="persistent-job", schedule_type="every",
             schedule_value="1h", payload="hi", channel_id="123",
             session_mode="persistent",
         )
         assert "persistent" in result
 
-    def test_create_at_relative(self):
-        result = create_job(
+    async def test_create_at_relative(self):
+        result = await create_job(
             name="one-shot", schedule_type="at",
             schedule_value="+20m", payload="fire once", channel_id="123",
         )
         assert "Created job" in result
         assert "one-shot" in result
 
-    def test_list_includes_disabled(self):
-        create_job(
+    async def test_list_includes_disabled(self):
+        await create_job(
             name="disabled-test", schedule_type="at",
             schedule_value="+1m", payload="hi", channel_id="123",
         )
@@ -187,5 +187,5 @@ class TestCronCRUD:
         db.execute("UPDATE cron_jobs SET enabled=0")
         db.commit()
 
-        assert "No scheduled jobs" in list_jobs(include_disabled=False)
-        assert "disabled-test" in list_jobs(include_disabled=True)
+        assert "No scheduled jobs" in await list_jobs(include_disabled=False)
+        assert "disabled-test" in await list_jobs(include_disabled=True)

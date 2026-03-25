@@ -12,6 +12,9 @@ MAX_HISTORY = int(os.getenv("MAX_HISTORY", "200"))
 TOOLS_ENABLED = os.getenv("TOOLS_ENABLED", "false").lower() in ("true", "1", "yes")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")  # for embedding (text-embedding-3-small)
 
+# PostgreSQL (Neon) — when set, all storage uses PostgreSQL instead of SQLite
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+
 # Claude Code integration (via claude-agent-sdk)
 ACP_CWD = os.getenv("ACP_CWD", "")  # default working directory for Claude Code tasks
 

@@ -98,8 +98,8 @@ def create_bot(agent: Agent) -> discord.Client:
         tags = ["user_profile"]
 
         try:
-            result = memory.save(content=content, tags=tags, source="system",
-                                 memory_dir=agent.memory_dir)
+            result = await memory.save(content=content, tags=tags, source="system",
+                                       memory_dir=agent.memory_dir)
             action = "updated" if cached else "recorded"
             log.info("user memory %s: %s (%s) → %s", action, username, display_name, result)
         except Exception as e:

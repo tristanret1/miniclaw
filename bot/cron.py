@@ -1,4 +1,4 @@
-"""Cron scheduler — SQLite-backed, asyncio-driven, with per-job context."""
+"""Cron scheduler — SQLite/PostgreSQL backed, asyncio-driven, with per-job context."""
 
 import asyncio
 import re
@@ -18,6 +18,7 @@ from bot.config import (
     SYSTEM_PROMPT,
     WORKSPACE_DIR,
 )
+from bot.db import use_postgres
 from bot.logger import get_logger
 
 log = get_logger("cron")
@@ -176,6 +177,30 @@ def _row_to_job(row: sqlite3.Row) -> CronJob:
     )
 
 
+def _record_to_job(r) -> CronJob:
+    """Convert an asyncpg Record to CronJob."""
+    return CronJob(
+        id=r["id"],
+        name=r["name"],
+        schedule_type=r["schedule_type"],
+        schedule_value=r["schedule_value"],
+        timezone=r["timezone"],
+        payload=r["payload"],
+        channel_id=r["channel_id"],
+        enabled=bool(r["enabled"]),
+        created_at=str(r["created_at"]),
+        next_run_at=r["next_run_at"],
+        last_run_at=r["last_run_at"],
+        last_status=r["last_status"],
+        last_error=r["last_error"],
+        consecutive_errors=r["consecutive_errors"],
+        session_mode=r["session_mode"],
+        context=r["context"],
+        model=r["model"],
+        delivery_channel=r["delivery_channel"],
+    )
+
+
 # ── Public CRUD (called from tools) ─────────────────────────────────────────
 
 _db: sqlite3.Connection | None = None
@@ -188,7 +213,7 @@ def _get_db() -> sqlite3.Connection:
     return _db
 
 
-def create_job(
+async def create_job(
     name: str,
     schedule_type: str,
     schedule_value: str,
@@ -217,19 +242,34 @@ def create_job(
         delivery_channel = "discord"
 
     job_id = uuid.uuid4().hex[:12]
-    now_iso = datetime.now(ZoneInfo(tz)).isoformat(timespec="seconds")
+    now_dt = datetime.now(ZoneInfo(tz))
 
-    db = _get_db()
-    db.execute(
-        """INSERT INTO cron_jobs
-           (id, name, schedule_type, schedule_value, timezone, payload, channel_id,
-            enabled, created_at, next_run_at, consecutive_errors,
-            session_mode, context, model, delivery_channel)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0, ?, ?, ?, ?)""",
-        (job_id, name, schedule_type, schedule_value, tz, payload, channel_id,
-         now_iso, next_run, session_mode, context, model, delivery_channel),
-    )
-    db.commit()
+    if use_postgres():
+        from bot.db import get_pool
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """INSERT INTO cron_jobs
+                   (id, name, schedule_type, schedule_value, timezone, payload, channel_id,
+                    enabled, created_at, next_run_at, consecutive_errors,
+                    session_mode, context, model, delivery_channel)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9, 0, $10, $11, $12, $13)""",
+                job_id, name, schedule_type, schedule_value, tz, payload, channel_id,
+                now_dt, next_run, session_mode, context, model, delivery_channel,
+            )
+    else:
+        now_iso = now_dt.isoformat(timespec="seconds")
+        db = _get_db()
+        db.execute(
+            """INSERT INTO cron_jobs
+               (id, name, schedule_type, schedule_value, timezone, payload, channel_id,
+                enabled, created_at, next_run_at, consecutive_errors,
+                session_mode, context, model, delivery_channel)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0, ?, ?, ?, ?)""",
+            (job_id, name, schedule_type, schedule_value, tz, payload, channel_id,
+             now_iso, next_run, session_mode, context, model, delivery_channel),
+        )
+        db.commit()
 
     next_dt = datetime.fromtimestamp(next_run, ZoneInfo(tz))
     log.info("created cron job: %s (%s) next=%s", name, job_id, next_dt.isoformat())
@@ -246,20 +286,30 @@ def create_job(
     )
 
 
-def list_jobs(include_disabled: bool = False) -> str:
+async def list_jobs(include_disabled: bool = False) -> str:
     """List cron jobs. Returns formatted string."""
-    db = _get_db()
-    if include_disabled:
-        rows = db.execute("SELECT * FROM cron_jobs ORDER BY next_run_at").fetchall()
+    if use_postgres():
+        from bot.db import get_pool
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            if include_disabled:
+                rows = await conn.fetch("SELECT * FROM cron_jobs ORDER BY next_run_at")
+            else:
+                rows = await conn.fetch("SELECT * FROM cron_jobs WHERE enabled=true ORDER BY next_run_at")
+        jobs = [_record_to_job(r) for r in rows]
     else:
-        rows = db.execute("SELECT * FROM cron_jobs WHERE enabled=1 ORDER BY next_run_at").fetchall()
+        db = _get_db()
+        if include_disabled:
+            rows = db.execute("SELECT * FROM cron_jobs ORDER BY next_run_at").fetchall()
+        else:
+            rows = db.execute("SELECT * FROM cron_jobs WHERE enabled=1 ORDER BY next_run_at").fetchall()
+        jobs = [_row_to_job(r) for r in rows]
 
-    if not rows:
+    if not jobs:
         return "No scheduled jobs."
 
     lines = []
-    for row in rows:
-        job = _row_to_job(row)
+    for job in jobs:
         tz = ZoneInfo(job.timezone)
         next_dt = datetime.fromtimestamp(job.next_run_at, tz).strftime("%Y-%m-%d %H:%M %Z")
         status = job.last_status or "never run"
@@ -276,18 +326,28 @@ def list_jobs(include_disabled: bool = False) -> str:
     return "\n".join(lines)
 
 
-def delete_job(job_id: str) -> str:
+async def delete_job(job_id: str) -> str:
     """Delete a job by ID or name. Returns confirmation."""
-    db = _get_db()
+    if use_postgres():
+        from bot.db import get_pool
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT id, name FROM cron_jobs WHERE id=$1", job_id)
+            if not row:
+                row = await conn.fetchrow("SELECT id, name FROM cron_jobs WHERE name=$1", job_id)
+            if not row:
+                return f"No job found with ID or name '{job_id}'."
+            await conn.execute("DELETE FROM cron_jobs WHERE id=$1", row["id"])
+    else:
+        db = _get_db()
+        row = db.execute("SELECT id, name FROM cron_jobs WHERE id=?", (job_id,)).fetchone()
+        if not row:
+            row = db.execute("SELECT id, name FROM cron_jobs WHERE name=?", (job_id,)).fetchone()
+        if not row:
+            return f"No job found with ID or name '{job_id}'."
+        db.execute("DELETE FROM cron_jobs WHERE id=?", (row["id"],))
+        db.commit()
 
-    row = db.execute("SELECT id, name FROM cron_jobs WHERE id=?", (job_id,)).fetchone()
-    if not row:
-        row = db.execute("SELECT id, name FROM cron_jobs WHERE name=?", (job_id,)).fetchone()
-    if not row:
-        return f"No job found with ID or name '{job_id}'."
-
-    db.execute("DELETE FROM cron_jobs WHERE id=?", (row["id"],))
-    db.commit()
     log.info("deleted cron job: %s (%s)", row["name"], row["id"])
 
     if _scheduler and _scheduler._running:
@@ -314,11 +374,18 @@ class CronScheduler:
         self._running = True
         self._sem = asyncio.Semaphore(CRON_MAX_CONCURRENT)
 
-        _get_db()
+        if use_postgres():
+            from bot.db import get_pool
+            pool = await get_pool()
+            await self._pg_catchup_missed(pool)
+            await self._pg_arm_timer(pool)
+            count = await pool.fetchval("SELECT COUNT(*) FROM cron_jobs WHERE enabled=true")
+        else:
+            _get_db()
+            self._catchup_missed()
+            self._arm_timer()
+            count = _get_db().execute("SELECT COUNT(*) FROM cron_jobs WHERE enabled=1").fetchone()[0]
 
-        self._catchup_missed()
-        self._arm_timer()
-        count = _get_db().execute("SELECT COUNT(*) FROM cron_jobs WHERE enabled=1").fetchone()[0]
         log.info("cron scheduler started (%d enabled jobs)", count)
 
     def stop(self) -> None:
@@ -381,19 +448,33 @@ class CronScheduler:
         if not self._running:
             return
         if self._ticking:
-            self._arm_timer()
+            if use_postgres():
+                from bot.db import get_pool
+                pool = await get_pool()
+                await self._pg_arm_timer(pool)
+            else:
+                self._arm_timer()
             return
 
         self._ticking = True
         try:
-            db = _get_db()
             now = time.time()
-            rows = db.execute(
-                "SELECT * FROM cron_jobs WHERE enabled=1 AND next_run_at <= ?", (now,)
-            ).fetchall()
 
-            if rows:
-                jobs = [_row_to_job(row) for row in rows]
+            if use_postgres():
+                from bot.db import get_pool
+                pool = await get_pool()
+                rows = await pool.fetch(
+                    "SELECT * FROM cron_jobs WHERE enabled=true AND next_run_at <= $1", now,
+                )
+                jobs = [_record_to_job(r) for r in rows] if rows else []
+            else:
+                db = _get_db()
+                rows = db.execute(
+                    "SELECT * FROM cron_jobs WHERE enabled=1 AND next_run_at <= ?", (now,)
+                ).fetchall()
+                jobs = [_row_to_job(row) for row in rows] if rows else []
+
+            if jobs:
                 log.info("cron tick: %d due job(s) — %s", len(jobs),
                          ", ".join(j.name for j in jobs))
 
@@ -403,13 +484,18 @@ class CronScheduler:
                 )
 
                 for job, result in zip(jobs, results):
-                    self._apply_result(job, result)
+                    await self._apply_result_async(job, result)
 
         except Exception as e:
             log.error("cron tick error: %s", e)
         finally:
             self._ticking = False
-            self._arm_timer()
+            if use_postgres():
+                from bot.db import get_pool
+                pool = await get_pool()
+                await self._pg_arm_timer(pool)
+            else:
+                self._arm_timer()
 
     async def _execute_job(self, job: CronJob) -> str:
         """Execute a single job within semaphore. Returns reply text."""
@@ -470,9 +556,8 @@ class CronScheduler:
 
             return reply
 
-    def _apply_result(self, job: CronJob, result: str | BaseException) -> None:
-        """Update job state after execution."""
-        db = _get_db()
+    async def _apply_result_async(self, job: CronJob, result: str | BaseException) -> None:
+        """Update job state after execution (both backends)."""
         now = time.time()
 
         if isinstance(result, BaseException):
@@ -482,19 +567,17 @@ class CronScheduler:
 
             try:
                 if job.schedule_type == "at":
-                    db.execute(
-                        "UPDATE cron_jobs SET last_run_at=?, last_status='error', last_error=?, "
-                        "consecutive_errors=?, enabled=0 WHERE id=?",
-                        (now, error_msg, consec, job.id),
+                    await self._update_job_state(
+                        job.id, last_run_at=now, last_status="error",
+                        last_error=error_msg, consecutive_errors=consec, enabled=False,
                     )
                 else:
                     natural_next = compute_next_run(job.schedule_type, job.schedule_value, job.timezone, now)
                     backoff_next = now + _backoff_delay(consec)
                     next_run = max(natural_next, backoff_next)
-                    db.execute(
-                        "UPDATE cron_jobs SET last_run_at=?, last_status='error', last_error=?, "
-                        "consecutive_errors=?, next_run_at=? WHERE id=?",
-                        (now, error_msg, consec, next_run, job.id),
+                    await self._update_job_state(
+                        job.id, last_run_at=now, last_status="error",
+                        last_error=error_msg, consecutive_errors=consec, next_run_at=next_run,
                     )
             except Exception as e:
                 log.error("failed to update job %s after error: %s", job.name, e)
@@ -502,22 +585,100 @@ class CronScheduler:
             log.info("job %s completed successfully", job.name)
             try:
                 if job.schedule_type == "at":
-                    db.execute(
-                        "UPDATE cron_jobs SET last_run_at=?, last_status='ok', last_error=NULL, "
-                        "consecutive_errors=0, enabled=0 WHERE id=?",
-                        (now, job.id),
+                    await self._update_job_state(
+                        job.id, last_run_at=now, last_status="ok",
+                        last_error=None, consecutive_errors=0, enabled=False,
                     )
                 else:
                     next_run = compute_next_run(job.schedule_type, job.schedule_value, job.timezone, now)
-                    db.execute(
-                        "UPDATE cron_jobs SET last_run_at=?, last_status='ok', last_error=NULL, "
-                        "consecutive_errors=0, next_run_at=? WHERE id=?",
-                        (now, next_run, job.id),
+                    await self._update_job_state(
+                        job.id, last_run_at=now, last_status="ok",
+                        last_error=None, consecutive_errors=0, next_run_at=next_run,
                     )
             except Exception as e:
                 log.error("failed to update job %s after success: %s", job.name, e)
 
-        db.commit()
+    async def _update_job_state(self, job_id: str, *, last_run_at: float,
+                                last_status: str, last_error: str | None,
+                                consecutive_errors: int,
+                                enabled: bool | None = None,
+                                next_run_at: float | None = None) -> None:
+        """Update job state in the active backend."""
+        if use_postgres():
+            from bot.db import get_pool
+            pool = await get_pool()
+            async with pool.acquire() as conn:
+                if enabled is not None and not enabled:
+                    # Disable (one-shot "at" jobs)
+                    await conn.execute(
+                        "UPDATE cron_jobs SET last_run_at=$1, last_status=$2, last_error=$3, "
+                        "consecutive_errors=$4, enabled=false WHERE id=$5",
+                        last_run_at, last_status, last_error, consecutive_errors, job_id,
+                    )
+                elif next_run_at is not None:
+                    await conn.execute(
+                        "UPDATE cron_jobs SET last_run_at=$1, last_status=$2, last_error=$3, "
+                        "consecutive_errors=$4, next_run_at=$5 WHERE id=$6",
+                        last_run_at, last_status, last_error, consecutive_errors, next_run_at, job_id,
+                    )
+        else:
+            db = _get_db()
+            if enabled is not None and not enabled:
+                db.execute(
+                    "UPDATE cron_jobs SET last_run_at=?, last_status=?, last_error=?, "
+                    "consecutive_errors=?, enabled=0 WHERE id=?",
+                    (last_run_at, last_status, last_error, consecutive_errors, job_id),
+                )
+            elif next_run_at is not None:
+                db.execute(
+                    "UPDATE cron_jobs SET last_run_at=?, last_status=?, last_error=?, "
+                    "consecutive_errors=?, next_run_at=? WHERE id=?",
+                    (last_run_at, last_status, last_error, consecutive_errors, next_run_at, job_id),
+                )
+            db.commit()
+
+    # ── PostgreSQL scheduler helpers ──────────────────────────────────────────
+
+    async def _pg_catchup_missed(self, pool) -> None:
+        """Advance next_run_at for recurring jobs past due (PostgreSQL)."""
+        now = time.time()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM cron_jobs WHERE enabled=true AND next_run_at < $1", now,
+            )
+            for r in rows:
+                job = _record_to_job(r)
+                if job.schedule_type == "at":
+                    continue
+                try:
+                    next_run = job.next_run_at
+                    while next_run <= now:
+                        next_run = compute_next_run(job.schedule_type, job.schedule_value, job.timezone, next_run)
+                    await conn.execute("UPDATE cron_jobs SET next_run_at=$1 WHERE id=$2", next_run, job.id)
+                    log.info("catchup: advanced %s to %s", job.name,
+                             datetime.fromtimestamp(next_run, ZoneInfo(job.timezone)).isoformat())
+                except Exception as e:
+                    log.error("catchup failed for %s: %s", job.name, e)
+
+    async def _pg_arm_timer(self, pool) -> None:
+        """Schedule the next timer tick (PostgreSQL)."""
+        if not self._running:
+            return
+        if self._timer_handle:
+            self._timer_handle.cancel()
+
+        row = await pool.fetchrow(
+            "SELECT MIN(next_run_at) as min_next FROM cron_jobs WHERE enabled=true"
+        )
+        if row and row["min_next"] is not None:
+            delay = max(row["min_next"] - time.time(), 0)
+            delay = min(delay, _MAX_TICK_INTERVAL)
+            delay = max(delay, _MIN_TICK_INTERVAL)
+        else:
+            delay = _MAX_TICK_INTERVAL
+
+        loop = asyncio.get_event_loop()
+        self._timer_handle = loop.call_later(delay, lambda: asyncio.create_task(self._on_tick()))
 
 
 # Module-level singleton

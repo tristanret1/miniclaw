@@ -40,17 +40,17 @@ class StreamProcessor:
 
     async def process(self, user_content: Content) -> AsyncIterator[str]:
         """Full processing flow: append user message, tool loop, yield text chunks."""
-        self.session.append(self.session_key, "user", user_content)
-        self.session.trim(self.session_key)
+        await self.session.append(self.session_key, "user", user_content)
+        await self.session.trim(self.session_key)
 
         # Auto-flush check — run in background
-        if self.session.should_flush(self.session_key):
+        if await self.session.should_flush(self.session_key):
             log.info("auto-flush triggered for session %s (background)", self.session_key)
             self.session.mark_flushed(self.session_key)
-            history_copy = list(self.session.get_history(self.session_key))
+            history_copy = list(await self.session.get_history(self.session_key))
             asyncio.create_task(self._run_flush(history_copy))
 
-        history = self.session.get_history(self.session_key)
+        history = await self.session.get_history(self.session_key)
         tools = ALL_TOOLS if TOOLS_ENABLED else None
 
         for round_num in range(1, MAX_TOOL_ROUNDS + 1):
@@ -129,7 +129,7 @@ class StreamProcessor:
                     raise
 
             # Save assistant response
-            self.session.append(self.session_key, "assistant", collected_content)
+            await self.session.append(self.session_key, "assistant", collected_content)
 
             if stop_reason != "tool_use":
                 return
@@ -149,7 +149,7 @@ class StreamProcessor:
                 yield "[Error: Tool execution failed]"
                 return
 
-            self.session.append(self.session_key, "user", tool_results)
+            await self.session.append(self.session_key, "user", tool_results)
 
         yield "[Stopped: too many tool calls]"
 

@@ -2,7 +2,7 @@
 
 import os
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -239,24 +239,24 @@ class TestUpdateEvent:
 class TestDeleteEvent:
     @patch("bot.google_calendar._find_reminder_job", return_value=None)
     @patch("bot.google_calendar._build_service")
-    def test_delete_success(self, mock_build, mock_find):
+    async def test_delete_success(self, mock_build, mock_find):
         mock_service = MagicMock()
         mock_build.return_value = mock_service
         mock_service.events.return_value.delete.return_value.execute.return_value = None
 
-        result = delete_event(event_id="evt1")
+        result = await delete_event(event_id="evt1")
         assert "deleted" in result.lower()
         assert "evt1" in result
 
     @patch("bot.google_calendar._build_service")
-    def test_delete_with_reminder_cleanup(self, mock_build):
+    async def test_delete_with_reminder_cleanup(self, mock_build):
         mock_service = MagicMock()
         mock_build.return_value = mock_service
         mock_service.events.return_value.delete.return_value.execute.return_value = None
 
         with patch("bot.google_calendar._find_reminder_job", return_value="job-123"):
-            with patch("bot.cron.delete_job") as mock_delete_job:
-                result = delete_event(event_id="evt1")
+            with patch("bot.cron.delete_job", new_callable=AsyncMock) as mock_delete_job:
+                result = await delete_event(event_id="evt1")
                 mock_delete_job.assert_called_once_with("job-123")
                 assert "deleted" in result.lower()
 
@@ -264,9 +264,9 @@ class TestDeleteEvent:
 # ── _schedule_urgent_reminder (mocked) ────────────────────────────────────
 
 class TestScheduleUrgentReminder:
-    @patch("bot.cron.create_job", return_value="Created job 'Reminder: Dentist' (id=abc123)")
-    def test_default_reminder(self, mock_create_job):
-        result = _schedule_urgent_reminder(
+    @patch("bot.cron.create_job", new_callable=AsyncMock, return_value="Created job 'Reminder: Dentist' (id=abc123)")
+    async def test_default_reminder(self, mock_create_job):
+        result = await _schedule_urgent_reminder(
             event_id="evt1",
             event_title="Dentist",
             event_start="2026-03-23T14:00:00-07:00",
@@ -278,9 +278,9 @@ class TestScheduleUrgentReminder:
         assert call_kwargs["name"] == "Reminder: Dentist"
         assert "calendar_event_id:evt1" in call_kwargs["context"]
 
-    @patch("bot.cron.create_job", return_value="Created job 'Reminder: Flight' (id=def456)")
-    def test_custom_offset(self, mock_create_job):
-        result = _schedule_urgent_reminder(
+    @patch("bot.cron.create_job", new_callable=AsyncMock, return_value="Created job 'Reminder: Flight' (id=def456)")
+    async def test_custom_offset(self, mock_create_job):
+        result = await _schedule_urgent_reminder(
             event_id="evt2",
             event_title="Flight",
             event_start="2026-03-23T14:00:00-07:00",
@@ -406,7 +406,7 @@ class TestGoogleCalendarIntegration:
                 assert ev["source_calendar"] == "Life"
                 print(f"  {ev['start']} | {ev['title']}")
 
-    def test_crud_lifecycle(self, caplog):
+    async def test_crud_lifecycle(self, caplog):
         """Create → read → update → delete a test event."""
         import logging
         from bot.config import CRON_TIMEZONE
@@ -446,7 +446,7 @@ class TestGoogleCalendarIntegration:
 
             finally:
                 # Delete (always clean up)
-                result = delete_event(event_id)
+                result = await delete_event(event_id)
                 assert "deleted" in result.lower()
                 print(f"Deleted event: {event_id}")
 

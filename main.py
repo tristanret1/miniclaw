@@ -24,6 +24,14 @@ from bot.session import SessionManager
 
 
 async def main():
+    # Initialize PostgreSQL pool + schema if DATABASE_URL is set
+    from bot import db
+    if db.use_postgres():
+        await db.ensure_schema()
+        print("Using PostgreSQL backend (Neon)")
+    else:
+        print("Using SQLite backend (local)")
+
     agents = load_agents()
 
     # Initialize per-agent runtime state
@@ -48,6 +56,7 @@ async def main():
     finally:
         from bot.acp import shutdown
         await shutdown()
+        await db.close_pool()
 
 
 if __name__ == "__main__":

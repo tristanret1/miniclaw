@@ -29,7 +29,7 @@ class TestStreamProcessor:
         async for _ in processor.process("user msg"):
             pass
 
-        history = session.get_history("test:1")
+        history = await session.get_history("test:1")
         assert len(history) == 2
         assert history[0]["role"] == "user"
         assert history[0]["content"] == "user msg"
@@ -122,8 +122,10 @@ class TestAutoFlush:
         provider = FakeProvider(stream_events=[events])
         session = SessionManager()
 
-        # Force should_flush to return True
-        monkeypatch.setattr(session, "should_flush", lambda key: True)
+        # Force should_flush to return True (async)
+        async def _always_flush(key):
+            return True
+        monkeypatch.setattr(session, "should_flush", _always_flush)
 
         import asyncio
         created_tasks = []
