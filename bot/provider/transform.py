@@ -187,3 +187,58 @@ def sanitize(messages: list[Message], provider_id: str) -> list[Message]:
     }
     fn = transformers.get(provider_id, lambda m: m)
     return fn(messages)
+
+
+def strip_tool_blocks(messages: list[Message]) -> list[Message]:
+    """Aggressively strip all tool_use/tool_result blocks, keeping only text.
+
+    - Messages with only tool blocks are dropped entirely.
+    - Mixed messages keep their text blocks only.
+    - Consecutive same-role messages after stripping are merged.
+    - Result starts with a user message with alternating roles.
+    """
+    cleaned: list[Message] = []
+    for msg in messages:
+        content = msg.get("content", "")
+        role = msg.get("role", "user")
+
+        if isinstance(content, str):
+            cleaned.append({"role": role, "content": content})
+            continue
+
+        if isinstance(content, list):
+            text_blocks = [
+                b for b in content
+                if isinstance(b, dict) and b.get("type") == "text"
+            ]
+            if not text_blocks:
+                continue
+            # Flatten to plain string if single text block
+            if len(text_blocks) == 1:
+                cleaned.append({"role": role, "content": text_blocks[0]["text"]})
+            else:
+                cleaned.append({"role": role, "content": text_blocks})
+            continue
+
+        # Unknown content type — keep as-is
+        cleaned.append({"role": role, "content": content})
+
+    # Merge consecutive same-role messages
+    merged: list[Message] = []
+    for msg in cleaned:
+        if merged and merged[-1].get("role") == msg.get("role"):
+            prev = merged[-1]["content"]
+            curr = msg["content"]
+            # Merge as strings when both are strings
+            if isinstance(prev, str) and isinstance(curr, str):
+                merged[-1]["content"] = prev + "\n\n" + curr
+            else:
+                log.warning("dropping duplicate %s message during strip_tool_blocks", msg.get("role"))
+        else:
+            merged.append(dict(msg))
+
+    # Ensure starts with user
+    while merged and merged[0].get("role") != "user":
+        merged.pop(0)
+
+    return merged

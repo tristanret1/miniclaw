@@ -10,7 +10,7 @@ from bot.logger import get_logger
 from bot.memory import get_flush_prompt
 from bot.message import Content, extract_text
 from bot.provider.base import BaseProvider
-from bot.provider.transform import sanitize
+from bot.provider.transform import sanitize, strip_tool_blocks
 from bot.session import SessionManager
 from bot.tools import ALL_TOOLS, handle_tool_call
 
@@ -116,14 +116,21 @@ class StreamProcessor:
                     yield text
                 elif "tool_use" in str(e) or "tool_result" in str(e) or "400" in str(e):
                     old_len = len(history)
-                    if round_num >= 2:
-                        history = history[:-2]  # Drop last assistant + user pair (likely culprit)
+             
+                    sanitized = sanitize(history, PROVIDER)
+                    if len(sanitized) == old_len:
+                        # sanitize didn't help — aggressively strip all tool blocks
+                        history[:] = strip_tool_blocks(history)
+                        log.warning(
+                                "400 tool mismatch — sanitize unchanged, stripped all tool blocks: %d -> %d messages",
+                                old_len, len(history),
+                        )
                     else:
-                        history[:] = sanitize(history, PROVIDER)
-                    log.warning(
-                        "400 tool mismatch — sanitized history: %d -> %d messages, retrying",
-                        old_len, len(history),
-                    )
+                        history[:] = sanitized
+                        log.warning(
+                                "400 tool mismatch — sanitized history: %d -> %d messages, retrying",
+                                old_len, len(history),
+                        )
                     if not history:
                         yield "[Error: conversation history was corrupted and cleared. Please try again.]"
                         return
