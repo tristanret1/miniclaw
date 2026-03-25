@@ -888,13 +888,13 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None) ->
         log_type = tool_input.get("type", "")
         date = tool_input.get("date", "")
         if log_type == "weight":
-            return health.log_weight(
+            return await health.log_weight(
                 value=tool_input.get("value", 0),
                 unit=tool_input.get("unit", "kg"),
                 date=date,
             )
         if log_type == "sleep":
-            return health.log_sleep(
+            return await health.log_sleep(
                 hours=tool_input.get("hours", 0),
                 quality=tool_input.get("quality", ""),
                 bedtime=tool_input.get("bedtime", ""),
@@ -902,7 +902,7 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None) ->
                 date=date,
             )
         if log_type == "exercise":
-            return health.log_exercise(
+            return await health.log_exercise(
                 activity=tool_input.get("activity", ""),
                 duration_minutes=tool_input.get("duration_minutes", 0),
                 intensity=tool_input.get("intensity", "moderate"),
@@ -913,13 +913,13 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None) ->
         return f"Unknown health log type: {log_type}. Use: weight, sleep, exercise."
     if tool_name == "health_stats":
         from bot import health
-        return health.get_stats(
+        return await health.get_stats(
             stat_type=tool_input.get("stat_type", "overview"),
             days=tool_input.get("days", 30),
         )
     if tool_name == "health_goal":
         from bot import health
-        return health.set_weight_goal(
+        return await health.set_weight_goal(
             start_weight=tool_input["start_weight"],
             target_weight=tool_input["target_weight"],
             target_date=tool_input["target_date"],

@@ -382,15 +382,16 @@ async def _pg_search(query: str, max_results: int) -> str:
     vec_results: dict[int, float] = {}
     query_vec = _get_embedding(query) if _has_embeddings() else None
     if query_vec:
+        import numpy as np
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT e.memory_id, 1 - (e.vector <=> $1::vector) AS similarity
+                SELECT e.memory_id, 1 - (e.vector <=> $1) AS similarity
                 FROM embeddings e
-                ORDER BY e.vector <=> $1::vector
+                ORDER BY e.vector <=> $1
                 LIMIT $2
                 """,
-                str(query_vec), max_results * 2,
+                np.array(query_vec, dtype=np.float32), max_results * 2,
             )
             if rows:
                 max_sim = max(r["similarity"] for r in rows) or 1.0

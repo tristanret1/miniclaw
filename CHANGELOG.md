@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.3.2 (2026-03-24)
+
+### Fixes
+- **pgvector search**: fix `memory_search` crash when vector embeddings are enabled — query vector was passed as `str(list)` instead of `np.array`, causing `could not convert string to float` error on the `<=>` operator
+
+## v0.3.1 (2026-03-24)
+
+### Fixes
+- **Health → PostgreSQL**: health tool data (`health_logs`, `weight_goals`) was only stored in local SQLite (`workspace/health.db`), bypassing PostgreSQL entirely
+  - `bot/db.py` — add `health_logs` and `weight_goals` tables to `ensure_schema()`
+  - `bot/health.py` — convert all functions to async with PG/SQLite dual-backend (same pattern as `memory.py`)
+  - `bot/tools.py` — `await` health tool dispatch calls
+  - `scripts/migrate_to_postgres.py` — add health data migration (health_logs + weight_goals)
+- **health PG type mismatch**: pass `datetime` objects (not raw strings) to asyncpg for `TIMESTAMPTZ` columns in health inserts and queries
+
 ## v0.3.0 (2026-03-24)
 
 ### Changes

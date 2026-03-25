@@ -70,7 +70,7 @@ async def main():
     await ensure_schema()
     print("Schema verified.")
 
-    total = {"memories": 0, "embeddings": 0, "messages": 0, "cron_jobs": 0, "skipped": 0}
+    total = {"memories": 0, "embeddings": 0, "messages": 0, "cron_jobs": 0, "health_logs": 0, "weight_goals": 0, "skipped": 0}
 
     # ── Migrate memories ──────────────────────────────────────────────────
     if memory_db_path.exists():
@@ -201,16 +201,87 @@ async def main():
     else:
         print(f"\nNo cron database found at {cron_db_path}, skipping.")
 
+    # ── Migrate health data ──────────────────────────────────────────────
+    health_db_path = workspace / "health.db"
+    if health_db_path.exists():
+        print(f"\nMigrating health data from {health_db_path}...")
+        conn = sqlite3.connect(str(health_db_path))
+        conn.row_factory = sqlite3.Row
+
+        # Health logs
+        try:
+            rows = conn.execute("SELECT id, type, data, logged_at FROM health_logs").fetchall()
+            print(f"  Found {len(rows)} health logs")
+
+            async with pool.acquire() as pg:
+                for row in rows:
+                    try:
+                        await pg.execute(
+                            """INSERT INTO health_logs (id, type, data, logged_at)
+                               VALUES ($1, $2, $3, $4)
+                               ON CONFLICT (id) DO NOTHING""",
+                            row["id"], row["type"], row["data"],
+                            _parse_ts(row["logged_at"]),
+                        )
+                        total["health_logs"] += 1
+                    except Exception as e:
+                        print(f"  Warning: skipping health log #{row['id']}: {e}")
+                        total["skipped"] += 1
+
+                # Reset sequence
+                max_id = await pg.fetchval("SELECT COALESCE(MAX(id), 0) FROM health_logs")
+                if max_id > 0:
+                    await pg.execute(f"SELECT setval('health_logs_id_seq', {max_id})")
+        except sqlite3.OperationalError:
+            print("  No health_logs table found, skipping.")
+
+        # Weight goals
+        try:
+            rows = conn.execute(
+                "SELECT id, start_weight, target_weight, start_date, target_date, created_at "
+                "FROM weight_goals"
+            ).fetchall()
+            print(f"  Found {len(rows)} weight goals")
+
+            async with pool.acquire() as pg:
+                for row in rows:
+                    try:
+                        await pg.execute(
+                            """INSERT INTO weight_goals (id, start_weight, target_weight, start_date, target_date, created_at)
+                               VALUES ($1, $2, $3, $4, $5, $6)
+                               ON CONFLICT (id) DO NOTHING""",
+                            row["id"], row["start_weight"], row["target_weight"],
+                            row["start_date"], row["target_date"],
+                            _parse_ts(row["created_at"]),
+                        )
+                        total["weight_goals"] += 1
+                    except Exception as e:
+                        print(f"  Warning: skipping weight goal #{row['id']}: {e}")
+                        total["skipped"] += 1
+
+                # Reset sequence
+                max_id = await pg.fetchval("SELECT COALESCE(MAX(id), 0) FROM weight_goals")
+                if max_id > 0:
+                    await pg.execute(f"SELECT setval('weight_goals_id_seq', {max_id})")
+        except sqlite3.OperationalError:
+            print("  No weight_goals table found, skipping.")
+
+        conn.close()
+    else:
+        print(f"\nNo health database found at {health_db_path}, skipping.")
+
     await pool.close()
 
     print(f"\n{'='*50}")
     print(f"Migration complete!")
-    print(f"  Memories:   {total['memories']}")
-    print(f"  Embeddings: {total['embeddings']}")
-    print(f"  Messages:   {total['messages']}")
-    print(f"  Cron jobs:  {total['cron_jobs']}")
+    print(f"  Memories:     {total['memories']}")
+    print(f"  Embeddings:   {total['embeddings']}")
+    print(f"  Messages:     {total['messages']}")
+    print(f"  Cron jobs:    {total['cron_jobs']}")
+    print(f"  Health logs:  {total['health_logs']}")
+    print(f"  Weight goals: {total['weight_goals']}")
     if total["skipped"]:
-        print(f"  Skipped:    {total['skipped']} (see warnings above)")
+        print(f"  Skipped:      {total['skipped']} (see warnings above)")
     print(f"{'='*50}")
 
 

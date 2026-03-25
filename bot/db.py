@@ -154,6 +154,31 @@ async def ensure_schema() -> None:
         """)
 
         await conn.execute("""
+            CREATE TABLE IF NOT EXISTS health_logs (
+                id BIGSERIAL PRIMARY KEY,
+                type TEXT NOT NULL,
+                data TEXT NOT NULL,
+                logged_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
+
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_health_type_date
+            ON health_logs (type, logged_at)
+        """)
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS weight_goals (
+                id BIGSERIAL PRIMARY KEY,
+                start_weight DOUBLE PRECISION NOT NULL,
+                target_weight DOUBLE PRECISION NOT NULL,
+                start_date TEXT NOT NULL,
+                target_date TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
+
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id BIGSERIAL PRIMARY KEY,
                 session_key TEXT NOT NULL,

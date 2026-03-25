@@ -1,4 +1,8 @@
-"""Health tracking: weight, sleep, exercise logging and stats."""
+"""Health tracking: weight, sleep, exercise logging and stats.
+
+Supports PostgreSQL backend when DATABASE_URL is set (via bot.db),
+with SQLite fallback.
+"""
 
 import json
 import sqlite3
@@ -44,25 +48,58 @@ def _get_conn() -> sqlite3.Connection:
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _use_pg() -> bool:
+    from bot.db import use_postgres
+    return use_postgres()
+
+
+async def _pg_pool():
+    from bot.db import get_pool
+    return await get_pool()
+
+
+def _parse_logged_at(logged_at: str) -> datetime:
+    """Parse a logged_at string into a datetime for asyncpg."""
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(logged_at, fmt)
+        except ValueError:
+            continue
+    return datetime.fromisoformat(logged_at)
+
+
+# ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 
-def log_weight(value: float, unit: str = "kg", date: str = "") -> str:
-    conn = _get_conn()
+async def log_weight(value: float, unit: str = "kg", date: str = "") -> str:
     logged_at = date or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     data = json.dumps({"value": value, "unit": unit})
-    conn.execute(
-        "INSERT INTO health_logs (type, data, logged_at) VALUES (?, ?, ?)",
-        ("weight", data, logged_at),
-    )
-    conn.commit()
+
+    if _use_pg():
+        pool = await _pg_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO health_logs (type, data, logged_at) VALUES ($1, $2, $3)",
+                "weight", data, _parse_logged_at(logged_at),
+            )
+    else:
+        conn = _get_conn()
+        conn.execute(
+            "INSERT INTO health_logs (type, data, logged_at) VALUES (?, ?, ?)",
+            ("weight", data, logged_at),
+        )
+        conn.commit()
+
     log.info("weight logged: %.1f %s at %s", value, unit, logged_at)
     return f"Logged weight: {value} {unit} ({logged_at})"
 
 
-def log_sleep(hours: float, quality: str = "", bedtime: str = "",
-              wake_time: str = "", date: str = "") -> str:
-    conn = _get_conn()
+async def log_sleep(hours: float, quality: str = "", bedtime: str = "",
+                    wake_time: str = "", date: str = "") -> str:
     logged_at = date or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     data = json.dumps({
         "hours": hours,
@@ -70,18 +107,28 @@ def log_sleep(hours: float, quality: str = "", bedtime: str = "",
         "bedtime": bedtime,
         "wake_time": wake_time,
     })
-    conn.execute(
-        "INSERT INTO health_logs (type, data, logged_at) VALUES (?, ?, ?)",
-        ("sleep", data, logged_at),
-    )
-    conn.commit()
+
+    if _use_pg():
+        pool = await _pg_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO health_logs (type, data, logged_at) VALUES ($1, $2, $3)",
+                "sleep", data, _parse_logged_at(logged_at),
+            )
+    else:
+        conn = _get_conn()
+        conn.execute(
+            "INSERT INTO health_logs (type, data, logged_at) VALUES (?, ?, ?)",
+            ("sleep", data, logged_at),
+        )
+        conn.commit()
+
     log.info("sleep logged: %.1f hrs at %s", hours, logged_at)
     return f"Logged sleep: {hours}h (quality: {quality or 'N/A'}) ({logged_at})"
 
 
-def log_exercise(activity: str, duration_minutes: int, intensity: str = "moderate",
-                 calories: int = 0, notes: str = "", date: str = "") -> str:
-    conn = _get_conn()
+async def log_exercise(activity: str, duration_minutes: int, intensity: str = "moderate",
+                       calories: int = 0, notes: str = "", date: str = "") -> str:
     logged_at = date or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     data = json.dumps({
         "activity": activity,
@@ -90,11 +137,22 @@ def log_exercise(activity: str, duration_minutes: int, intensity: str = "moderat
         "calories": calories,
         "notes": notes,
     })
-    conn.execute(
-        "INSERT INTO health_logs (type, data, logged_at) VALUES (?, ?, ?)",
-        ("exercise", data, logged_at),
-    )
-    conn.commit()
+
+    if _use_pg():
+        pool = await _pg_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO health_logs (type, data, logged_at) VALUES ($1, $2, $3)",
+                "exercise", data, _parse_logged_at(logged_at),
+            )
+    else:
+        conn = _get_conn()
+        conn.execute(
+            "INSERT INTO health_logs (type, data, logged_at) VALUES (?, ?, ?)",
+            ("exercise", data, logged_at),
+        )
+        conn.commit()
+
     tag = "moderate+" if intensity in ("moderate", "high", "vigorous") else "low"
     log.info("exercise logged: %s %dmin (%s) at %s", activity, duration_minutes, intensity, logged_at)
     return f"Logged exercise: {activity} {duration_minutes}min ({intensity}, {tag}) ({logged_at})"
@@ -104,16 +162,27 @@ def log_exercise(activity: str, duration_minutes: int, intensity: str = "moderat
 # Weight goal
 # ---------------------------------------------------------------------------
 
-def set_weight_goal(start_weight: float, target_weight: float,
-                    target_date: str) -> str:
-    conn = _get_conn()
+async def set_weight_goal(start_weight: float, target_weight: float,
+                          target_date: str) -> str:
     now = datetime.now().strftime("%Y-%m-%d")
-    conn.execute(
-        "INSERT INTO weight_goals (start_weight, target_weight, start_date, target_date) "
-        "VALUES (?, ?, ?, ?)",
-        (start_weight, target_weight, now, target_date),
-    )
-    conn.commit()
+
+    if _use_pg():
+        pool = await _pg_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO weight_goals (start_weight, target_weight, start_date, target_date) "
+                "VALUES ($1, $2, $3, $4)",
+                start_weight, target_weight, now, target_date,
+            )
+    else:
+        conn = _get_conn()
+        conn.execute(
+            "INSERT INTO weight_goals (start_weight, target_weight, start_date, target_date) "
+            "VALUES (?, ?, ?, ?)",
+            (start_weight, target_weight, now, target_date),
+        )
+        conn.commit()
+
     diff = start_weight - target_weight
     return (
         f"Weight goal set: {start_weight} kg -> {target_weight} kg "
@@ -152,9 +221,33 @@ def _query_logs(log_type: str, start: str, end: str) -> list[dict]:
     return results
 
 
-def weekly_exercise_stats() -> str:
+async def _pg_query_logs(log_type: str, start: str, end: str) -> list[dict]:
+    pool = await _pg_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT data, logged_at FROM health_logs "
+            "WHERE type = $1 AND logged_at BETWEEN $2 AND $3 "
+            "ORDER BY logged_at",
+            log_type, _parse_logged_at(start), _parse_logged_at(end),
+        )
+    results = []
+    for row in rows:
+        entry = json.loads(row["data"])
+        logged_at = row["logged_at"]
+        entry["logged_at"] = logged_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(logged_at, "strftime") else str(logged_at)
+        results.append(entry)
+    return results
+
+
+async def _get_logs(log_type: str, start: str, end: str) -> list[dict]:
+    if _use_pg():
+        return await _pg_query_logs(log_type, start, end)
+    return _query_logs(log_type, start, end)
+
+
+async def weekly_exercise_stats() -> str:
     start, end = _week_bounds()
-    entries = _query_logs("exercise", start, end)
+    entries = await _get_logs("exercise", start, end)
     if not entries:
         return "This week: no exercise logged yet. Goal: 150 min moderate+ intensity."
 
@@ -189,22 +282,33 @@ def weekly_exercise_stats() -> str:
     return "\n".join(lines)
 
 
-def weight_trend(days: int = 30) -> str:
+async def weight_trend(days: int = 30) -> str:
     end = datetime.now().strftime("%Y-%m-%d 23:59:59")
     start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d 00:00:00")
-    entries = _query_logs("weight", start, end)
+    entries = await _get_logs("weight", start, end)
 
     # Get active weight goal
-    conn = _get_conn()
-    goal_row = conn.execute(
-        "SELECT start_weight, target_weight, start_date, target_date "
-        "FROM weight_goals ORDER BY created_at DESC LIMIT 1"
-    ).fetchone()
+    if _use_pg():
+        pool = await _pg_pool()
+        async with pool.acquire() as conn:
+            goal_row = await conn.fetchrow(
+                "SELECT start_weight, target_weight, start_date, target_date "
+                "FROM weight_goals ORDER BY created_at DESC LIMIT 1"
+            )
+    else:
+        conn = _get_conn()
+        goal_row = conn.execute(
+            "SELECT start_weight, target_weight, start_date, target_date "
+            "FROM weight_goals ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
 
     if not entries:
         msg = f"No weight data in the last {days} days."
         if goal_row:
-            msg += f"\nActive goal: {goal_row[0]} kg -> {goal_row[1]} kg by {goal_row[3]}"
+            if _use_pg():
+                msg += f"\nActive goal: {goal_row['start_weight']} kg -> {goal_row['target_weight']} kg by {goal_row['target_date']}"
+            else:
+                msg += f"\nActive goal: {goal_row[0]} kg -> {goal_row[1]} kg by {goal_row[3]}"
         return msg
 
     lines = [f"## Weight Trend (last {days} days)"]
@@ -218,9 +322,13 @@ def weight_trend(days: int = 30) -> str:
     lines.append(f"- Entries: {len(entries)}")
 
     if goal_row:
-        _, target, _, target_date = goal_row
+        if _use_pg():
+            target = goal_row["target_weight"]
+            target_date_str = goal_row["target_date"]
+        else:
+            _, target, _, target_date_str = goal_row
         to_go = last_val - target
-        lines.append(f"\nGoal: {target} kg by {target_date}")
+        lines.append(f"\nGoal: {target} kg by {target_date_str}")
         if to_go > 0:
             lines.append(f"  Still {to_go:.1f} kg to go")
         else:
@@ -233,10 +341,10 @@ def weight_trend(days: int = 30) -> str:
     return "\n".join(lines)
 
 
-def sleep_summary(days: int = 7) -> str:
+async def sleep_summary(days: int = 7) -> str:
     end = datetime.now().strftime("%Y-%m-%d 23:59:59")
     start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d 00:00:00")
-    entries = _query_logs("sleep", start, end)
+    entries = await _get_logs("sleep", start, end)
 
     if not entries:
         return f"No sleep data in the last {days} days."
@@ -268,25 +376,25 @@ def sleep_summary(days: int = 7) -> str:
     return "\n".join(lines)
 
 
-def health_overview() -> str:
+async def health_overview() -> str:
     """Combined overview: exercise progress + weight trend + sleep."""
     parts = [
-        weekly_exercise_stats(),
+        await weekly_exercise_stats(),
         "",
-        weight_trend(days=30),
+        await weight_trend(days=30),
         "",
-        sleep_summary(days=7),
+        await sleep_summary(days=7),
     ]
     return "\n".join(parts)
 
 
-def get_stats(stat_type: str, days: int = 30) -> str:
+async def get_stats(stat_type: str, days: int = 30) -> str:
     if stat_type == "exercise" or stat_type == "weekly_exercise":
-        return weekly_exercise_stats()
+        return await weekly_exercise_stats()
     if stat_type == "weight":
-        return weight_trend(days=days)
+        return await weight_trend(days=days)
     if stat_type == "sleep":
-        return sleep_summary(days=days)
+        return await sleep_summary(days=days)
     if stat_type == "overview":
-        return health_overview()
+        return await health_overview()
     return f"Unknown stat type: {stat_type}. Use: exercise, weight, sleep, overview."
