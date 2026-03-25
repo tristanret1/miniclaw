@@ -116,7 +116,10 @@ class StreamProcessor:
                     yield text
                 elif "tool_use" in str(e) or "tool_result" in str(e) or "400" in str(e):
                     old_len = len(history)
-                    history[:] = sanitize(history, PROVIDER)
+                    if round_num >= 2:
+                        history = history[:-2]  # Drop last assistant + user pair (likely culprit)
+                    else:
+                        history[:] = sanitize(history, PROVIDER)
                     log.warning(
                         "400 tool mismatch — sanitized history: %d -> %d messages, retrying",
                         old_len, len(history),
