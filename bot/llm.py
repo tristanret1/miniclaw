@@ -8,25 +8,32 @@ from typing import TYPE_CHECKING
 
 from bot.message import Content
 from bot.processor import StreamProcessor
-from bot.provider import get_default_provider
+from bot.provider import get_default_provider, get_provider
 from bot.provider.base import BaseProvider
 from bot.session import SessionManager
 
 if TYPE_CHECKING:
     from bot.agent import Agent
 
-# Global provider singleton (shared across agents — stateless)
-_provider: BaseProvider | None = None
+# Provider cache: keyed by (provider_id, model)
+_providers: dict[tuple[str, str], BaseProvider] = {}
 
 # Default session manager (used when no agent is specified)
 _default_session_mgr: SessionManager | None = None
 
 
-def _get_provider() -> BaseProvider:
-    global _provider
-    if _provider is None:
-        _provider = get_default_provider()
-    return _provider
+def _get_provider(provider_id: str | None = None, model: str | None = None) -> BaseProvider:
+    """Get or create a cached provider instance."""
+    if provider_id and model:
+        key = (provider_id, model)
+        if key not in _providers:
+            _providers[key] = get_provider(provider_id, model)
+        return _providers[key]
+    # Default provider
+    key = ("_default", "_default")
+    if key not in _providers:
+        _providers[key] = get_default_provider()
+    return _providers[key]
 
 
 def _get_default_session_mgr() -> SessionManager:
@@ -37,19 +44,20 @@ def _get_default_session_mgr() -> SessionManager:
 
 
 def _resolve(agent: Agent | None = None):
-    """Resolve session manager, system prompt, memory dir, and agent name from agent or defaults."""
+    """Resolve provider, session manager, system prompt, memory dir, and agent name from agent or defaults."""
     if agent is not None:
         session_mgr = agent.session_mgr or _get_default_session_mgr()
-        return session_mgr, agent.system_prompt, agent.memory_dir, agent.name
-    return _get_default_session_mgr(), None, None, "default"
+        provider = _get_provider(agent.effective_provider, agent.effective_model)
+        return provider, session_mgr, agent.system_prompt, agent.memory_dir, agent.name
+    return _get_provider(), _get_default_session_mgr(), None, None, "default"
 
 
 async def stream(session_key: str, user_content: Content,
                  agent: Agent | None = None) -> AsyncIterator[str]:
     """Unified entry: stream LLM reply with tool loop."""
-    session_mgr, system_prompt, memory_dir, agent_name = _resolve(agent)
+    provider, session_mgr, system_prompt, memory_dir, agent_name = _resolve(agent)
     processor = StreamProcessor(
-        provider=_get_provider(),
+        provider=provider,
         session=session_mgr,
         session_key=session_key,
         system_prompt=system_prompt,

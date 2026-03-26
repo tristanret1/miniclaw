@@ -13,7 +13,7 @@ class TestLLM:
         provider = FakeProvider(stream_events=[events])
         session = SessionManager()
 
-        monkeypatch.setattr(llm_mod, "_provider", provider)
+        monkeypatch.setattr(llm_mod, "_providers", {("_default", "_default"): provider})
         monkeypatch.setattr(llm_mod, "_default_session_mgr", session)
 
         chunks = []
@@ -27,15 +27,15 @@ class TestLLM:
         provider = FakeProvider(stream_events=[events])
         session = SessionManager()
 
-        monkeypatch.setattr(llm_mod, "_provider", provider)
+        monkeypatch.setattr(llm_mod, "_providers", {("_default", "_default"): provider})
         monkeypatch.setattr(llm_mod, "_default_session_mgr", session)
 
         result = await llm_mod.reply("test:1", "hi")
         assert result == "Complete reply"
 
     async def test_singletons_created(self, monkeypatch):
-        """Singletons are created on first access."""
-        monkeypatch.setattr(llm_mod, "_provider", None)
+        """Providers are created on first access and cached."""
+        monkeypatch.setattr(llm_mod, "_providers", {})
         monkeypatch.setattr(llm_mod, "_default_session_mgr", None)
 
         provider = llm_mod._get_provider()
@@ -49,7 +49,7 @@ class TestLLM:
 
     async def test_singletons_reused(self, monkeypatch):
         """Multiple calls reuse the same provider and session."""
-        monkeypatch.setattr(llm_mod, "_provider", None)
+        monkeypatch.setattr(llm_mod, "_providers", {})
         monkeypatch.setattr(llm_mod, "_default_session_mgr", None)
 
         p1 = llm_mod._get_provider()
