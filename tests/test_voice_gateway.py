@@ -75,7 +75,7 @@ class TestProcessUtterance:
              patch("bot.voice_gateway.wake.check", return_value="hello"), \
              patch("bot.voice_gateway.llm.reply", new_callable=AsyncMock, return_value="Hi there!"), \
              patch("bot.voice_gateway.tts.synthesize", new_callable=AsyncMock, return_value=b"audio"), \
-             patch("bot.voice_gateway._play_audio", new_callable=AsyncMock) as mock_play:
+             patch("bot.voice_gateway._play_audio_fallback", new_callable=AsyncMock) as mock_play:
 
             await _process_utterance(b"fake-audio")
 
@@ -107,7 +107,7 @@ class TestProcessUtterance:
              patch("bot.voice_gateway.wake.check", return_value=None), \
              patch("bot.voice_gateway.llm.reply", new_callable=AsyncMock, return_value="It's 3pm") as mock_llm, \
              patch("bot.voice_gateway.tts.synthesize", new_callable=AsyncMock, return_value=b"audio"), \
-             patch("bot.voice_gateway._play_audio", new_callable=AsyncMock):
+             patch("bot.voice_gateway._play_audio_fallback", new_callable=AsyncMock):
 
             await _process_utterance(b"fake-audio")
 
@@ -146,7 +146,7 @@ class TestProcessUtterance:
              patch("bot.voice_gateway.wake.check", return_value="hello"), \
              patch("bot.voice_gateway.llm.reply", new_callable=AsyncMock, return_value="Hi!"), \
              patch("bot.voice_gateway.tts.synthesize", new_callable=AsyncMock, return_value=b"audio"), \
-             patch("bot.voice_gateway._play_audio", new_callable=AsyncMock):
+             patch("bot.voice_gateway._play_audio_fallback", new_callable=AsyncMock):
 
             await _process_utterance(b"fake-audio")
 

@@ -1,7 +1,8 @@
 """Voice gateway — local microphone → STT → wake word → LLM → TTS → speaker.
 
 Runs as a peer gateway alongside Discord, SMS, and iMessage.
-Audio capture uses PyAudio in a callback thread; processing is async.
+Uses macOS AVAudioEngine with voice processing for hardware echo cancellation.
+Falls back to PyAudio if AVAudioEngine is unavailable.
 """
 
 from __future__ import annotations
@@ -9,11 +10,7 @@ from __future__ import annotations
 import asyncio
 import math
 import struct
-import tempfile
 import time
-from pathlib import Path
-
-import pyaudio
 
 from bot import llm, stt, tts, wake
 from bot.config import (
@@ -29,14 +26,16 @@ log = get_logger("voice")
 
 SESSION_KEY = "voice:local"
 
-# Suppresses mic input during playback + cooldown so the bot doesn't hear itself.
-# Stored as a monotonic timestamp — mic is muted until this time passes.
+# Suppresses mic input during processing + cooldown (safety net on top of AEC).
 _muted_until: float = 0.0
-_PLAYBACK_COOLDOWN = 1.5  # seconds after playback to keep mic muted (echo decay)
+_PLAYBACK_COOLDOWN = 0.5  # shorter cooldown since AEC handles most echo
 
 # Conversation mode: after wake word, stay active for this many seconds of silence
-_CONVERSATION_TIMEOUT = 30.0  # seconds without speech before returning to wake mode
-_active_until: float = 0.0  # monotonic timestamp; 0 = waiting for wake word
+_CONVERSATION_TIMEOUT = 30.0
+_active_until: float = 0.0
+
+# AudioEngine instance (set during gateway startup)
+_engine = None
 
 
 # ── VAD helpers ───────────────────────────────────────────────────────────────
@@ -106,56 +105,27 @@ class AudioSegmenter:
         self._is_speaking = False
 
 
-# ── Audio playback ────────────────────────────────────────────────────────────
+# ── Mute helpers ──────────────────────────────────────────────────────────────
 
 
 def _is_muted() -> bool:
-    """Check if mic is muted (during playback or cooldown)."""
+    """Check if mic is muted (during processing or cooldown)."""
     return time.monotonic() < _muted_until
 
 
 def _mute() -> None:
-    """Mute mic. Extended by _mute_cooldown() after playback ends."""
+    """Mute mic. Extended by _mute_cooldown() after processing ends."""
     global _muted_until
-    _muted_until = float("inf")  # muted until explicitly released
+    _muted_until = float("inf")
 
 
 def _mute_cooldown() -> None:
-    """Release mute with a cooldown period for echo decay."""
+    """Release mute with a cooldown period."""
     global _muted_until
     _muted_until = time.monotonic() + _PLAYBACK_COOLDOWN
 
 
-async def _play_audio(mp3_bytes: bytes) -> None:
-    """Play MP3 audio through the default speaker using afplay (macOS) or ffplay.
-
-    Mutes mic during playback + cooldown period so the bot doesn't hear
-    and re-process its own TTS output.
-    """
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-        f.write(mp3_bytes)
-        tmp_path = f.name
-
-    try:
-        import shutil
-        if shutil.which("afplay"):
-            cmd = ["afplay", tmp_path]
-        else:
-            cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", tmp_path]
-
-        _mute()
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        await proc.wait()
-    finally:
-        _mute_cooldown()  # keep muted for cooldown period after playback
-        Path(tmp_path).unlink(missing_ok=True)
-
-
-# ── Utterance processing ─────────────────────────────────────────────────────
+# ── Conversation mode ─────────────────────────────────────────────────────────
 
 
 def _is_active() -> bool:
@@ -176,6 +146,9 @@ def _deactivate() -> None:
     _active_until = 0.0
 
 
+# ── Utterance processing ─────────────────────────────────────────────────────
+
+
 async def _process_utterance(audio_bytes: bytes) -> None:
     """Process a single utterance: STT → (wake check or active mode) → LLM → TTS → play.
 
@@ -192,12 +165,9 @@ async def _process_utterance(audio_bytes: bytes) -> None:
 
     # 2. Determine user text — wake word or active conversation
     if _is_active():
-        # Already in conversation mode — send directly, also check for wake word
-        # in case user says it again (strip it if present)
         command = wake.check(text)
         user_text = command if command is not None else text
     else:
-        # Waiting for wake word
         command = wake.check(text)
         if command is None:
             log.debug("no wake word, not active — ignoring")
@@ -221,18 +191,44 @@ async def _process_utterance(audio_bytes: bytes) -> None:
         return
 
     log.info("reply: %s", reply_text[:200])
-
-    # Extend conversation mode after getting a reply
     _activate()
 
     # 4. TTS
     audio = await tts.synthesize(reply_text, provider=TTS_PROVIDER)
 
-    # 5. Play
-    await _play_audio(audio)
+    # 5. Play through AudioEngine (AEC reference) or fallback
+    if _engine:
+        await _engine.play_audio(audio)
+    else:
+        await _play_audio_fallback(audio)
 
-    # Extend again after playback so user has time to respond
     _activate()
+
+
+async def _play_audio_fallback(mp3_bytes: bytes) -> None:
+    """Fallback playback via afplay (no AEC)."""
+    import shutil
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+        f.write(mp3_bytes)
+        tmp_path = f.name
+
+    try:
+        if shutil.which("afplay"):
+            cmd = ["afplay", tmp_path]
+        else:
+            cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", tmp_path]
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.wait()
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
 
 
 # ── Gateway lifecycle ─────────────────────────────────────────────────────────
@@ -241,9 +237,11 @@ async def _process_utterance(audio_bytes: bytes) -> None:
 async def start_voice_gateway() -> None:
     """Start the voice gateway. Listens on local microphone until cancelled.
 
-    Audio capture runs in a PyAudio callback thread. Frames are pushed to an
-    asyncio queue for processing in the main event loop.
+    Uses macOS AVAudioEngine with voice processing (AEC) for echo cancellation.
+    TTS audio is played through the same engine so AEC can subtract it from mic input.
     """
+    global _engine
+
     log.info("Voice gateway starting (sample_rate=%d, threshold=%d, silence=%.1fs)",
              VOICE_SAMPLE_RATE, VOICE_SILENCE_THRESHOLD, VOICE_SILENCE_DURATION)
 
@@ -251,21 +249,32 @@ async def start_voice_gateway() -> None:
     audio_queue: asyncio.Queue[bytes] = asyncio.Queue()
     loop = asyncio.get_running_loop()
 
-    # PyAudio callback — runs in a separate thread
-    def audio_callback(in_data, frame_count, time_info, status):
-        loop.call_soon_threadsafe(audio_queue.put_nowait, in_data)
-        return (None, pyaudio.paContinue)
+    # Try AVAudioEngine with AEC; fall back to PyAudio
+    try:
+        from bot.audio_engine import AudioEngine
+        engine = AudioEngine(sample_rate=VOICE_SAMPLE_RATE)
+        engine.start(queue=audio_queue, loop=loop)
+        _engine = engine
+        log.info("Using AVAudioEngine with hardware AEC")
+    except Exception as e:
+        log.warning("AVAudioEngine unavailable (%s), falling back to PyAudio", e)
+        import pyaudio
 
-    pa = pyaudio.PyAudio()
-    stream = pa.open(
-        format=pyaudio.paInt16,
-        channels=1,
-        rate=VOICE_SAMPLE_RATE,
-        input=True,
-        frames_per_buffer=frame_size,
-        stream_callback=audio_callback,
-    )
-    stream.start_stream()
+        def audio_callback(in_data, frame_count, time_info, status):
+            loop.call_soon_threadsafe(audio_queue.put_nowait, in_data)
+            return (None, pyaudio.paContinue)
+
+        pa = pyaudio.PyAudio()
+        stream = pa.open(
+            format=pyaudio.paInt16,
+            channels=1,
+            rate=VOICE_SAMPLE_RATE,
+            input=True,
+            frames_per_buffer=frame_size,
+            stream_callback=audio_callback,
+        )
+        stream.start_stream()
+
     log.info("Voice gateway listening on microphone")
 
     segmenter = AudioSegmenter(
@@ -278,15 +287,11 @@ async def start_voice_gateway() -> None:
     try:
         while True:
             frame = await audio_queue.get()
-            # Skip mic input during playback + cooldown to avoid hearing ourselves
             if _is_muted():
                 segmenter.reset()
                 continue
             utterance = segmenter.feed(frame)
             if utterance:
-                # Mute mic for the entire processing cycle (STT → LLM → TTS → play)
-                # so we don't pick up partial speech or our own TTS output.
-                # Processing is serial — one utterance at a time.
                 _mute()
                 segmenter.reset()
                 try:
@@ -296,7 +301,11 @@ async def start_voice_gateway() -> None:
     except asyncio.CancelledError:
         pass
     finally:
-        stream.stop_stream()
-        stream.close()
-        pa.terminate()
+        if _engine:
+            _engine.stop()
+            _engine = None
+        else:
+            stream.stop_stream()
+            stream.close()
+            pa.terminate()
         log.info("Voice gateway stopped")
