@@ -100,14 +100,21 @@ class AudioSegmenter:
 
 
 async def _play_audio(mp3_bytes: bytes) -> None:
-    """Play MP3 audio through the default speaker using ffplay."""
+    """Play MP3 audio through the default speaker using afplay (macOS) or ffplay."""
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
         f.write(mp3_bytes)
         tmp_path = f.name
 
     try:
+        # macOS built-in afplay; fall back to ffplay if available
+        import shutil
+        if shutil.which("afplay"):
+            cmd = ["afplay", tmp_path]
+        else:
+            cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", tmp_path]
+
         proc = await asyncio.create_subprocess_exec(
-            "ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", tmp_path,
+            *cmd,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
