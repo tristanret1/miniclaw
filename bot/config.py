@@ -93,6 +93,17 @@ IMESSAGE_DB_PATH = os.getenv("IMESSAGE_DB_PATH", "")  # path to Messages/chat.db
 IMESSAGE_ALLOW_FROM = [s.strip() for s in os.getenv("IMESSAGE_ALLOW_FROM", "").split(",") if s.strip()]
 IMESSAGE_SERVICE = os.getenv("IMESSAGE_SERVICE", "auto")  # "imessage", "sms", or "auto"
 
+# Voice gateway (local microphone → STT → LLM → TTS → speaker)
+VOICE_ENABLED = os.getenv("VOICE_ENABLED", "false").lower() in ("true", "1", "yes")
+WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "miniclaw,小爪").split(",") if w.strip()]
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "openai")  # "openai" or "edge"
+TTS_VOICE = os.getenv("TTS_VOICE", "alloy")  # OpenAI voice name
+TTS_MODEL = os.getenv("TTS_MODEL", "gpt-4o-mini-tts")  # OpenAI TTS model
+STT_MODEL = os.getenv("STT_MODEL", "whisper-1")  # OpenAI Whisper model
+VOICE_SILENCE_THRESHOLD = int(os.getenv("VOICE_SILENCE_THRESHOLD", "500"))  # RMS threshold
+VOICE_SILENCE_DURATION = float(os.getenv("VOICE_SILENCE_DURATION", "1.5"))  # seconds of silence to segment
+VOICE_SAMPLE_RATE = int(os.getenv("VOICE_SAMPLE_RATE", "16000"))  # Hz
+
 # DM whitelist — only these user IDs can DM the bot (empty = deny all DMs)
 ALLOWED_DM_USERS: set[int] = {
     int(uid.strip()) for uid in os.getenv("ALLOWED_DM_USERS", "").split(",") if uid.strip()

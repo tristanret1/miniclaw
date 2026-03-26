@@ -8,3 +8,6 @@ google-api-python-client>=2.0
 google-auth>=2.0
 asyncpg>=0.30.0
 pgvector>=0.3.0
+pyaudio>=0.2.14
+openai>=1.0
+edge-tts>=6.1
