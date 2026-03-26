@@ -9,6 +9,7 @@ if len(sys.argv) > 1 and sys.argv[1] == "agents":
 
 # Parse --only flag for selective agent startup
 _only_agents: list[str] | None = None
+_voice_only = "--voice-only" in sys.argv
 for i, arg in enumerate(sys.argv[1:], 1):
     if arg == "--only" and i + 1 < len(sys.argv):
         _only_agents = [n.strip() for n in sys.argv[i + 1].split(",") if n.strip()]
@@ -50,21 +51,28 @@ async def main():
         agent.session_mgr = SessionManager(db_path=agent.sessions_db)
 
     tasks = []
-    for agent in agents:
-        bot = create_bot(agent)
-        tasks.append(bot.start(agent.discord_token))
 
-    if SMS_ENABLED:
-        from bot.sms_gateway import start_sms_server
-        tasks.append(start_sms_server())
-
-    if IMESSAGE_ENABLED:
-        from bot.imessage_gateway import start_imessage_gateway
-        tasks.append(start_imessage_gateway())
-
-    if VOICE_ENABLED:
+    if _voice_only:
+        # Voice-only mode — skip Discord bots and other gateways
         from bot.voice_gateway import start_voice_gateway
         tasks.append(start_voice_gateway())
+        print("Voice-only mode — Discord bots skipped")
+    else:
+        for agent in agents:
+            bot = create_bot(agent)
+            tasks.append(bot.start(agent.discord_token))
+
+        if SMS_ENABLED:
+            from bot.sms_gateway import start_sms_server
+            tasks.append(start_sms_server())
+
+        if IMESSAGE_ENABLED:
+            from bot.imessage_gateway import start_imessage_gateway
+            tasks.append(start_imessage_gateway())
+
+        if VOICE_ENABLED:
+            from bot.voice_gateway import start_voice_gateway
+            tasks.append(start_voice_gateway())
 
     try:
         await asyncio.gather(*tasks)
