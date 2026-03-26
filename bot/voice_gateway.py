@@ -284,8 +284,15 @@ async def start_voice_gateway() -> None:
                 continue
             utterance = segmenter.feed(frame)
             if utterance:
-                # Process in background so we keep listening
-                asyncio.create_task(_process_utterance(utterance))
+                # Mute mic for the entire processing cycle (STT → LLM → TTS → play)
+                # so we don't pick up partial speech or our own TTS output.
+                # Processing is serial — one utterance at a time.
+                _mute()
+                segmenter.reset()
+                try:
+                    await _process_utterance(utterance)
+                finally:
+                    _mute_cooldown()
     except asyncio.CancelledError:
         pass
     finally:
