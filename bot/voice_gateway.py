@@ -193,14 +193,17 @@ async def _process_utterance(audio_bytes: bytes) -> None:
     log.info("reply: %s", reply_text[:200])
     _activate()
 
-    # 4. TTS
-    audio = await tts.synthesize(reply_text, provider=TTS_PROVIDER)
-
-    # 5. Play through AudioEngine (AEC reference) or fallback
-    if _engine:
-        await _engine.play_audio(audio)
+    # 4. TTS → Play (streaming if AudioEngine available)
+    if _engine and TTS_PROVIDER == "openai":
+        # Stream PCM directly to AudioEngine — starts playing in ~0.5s
+        await _engine.play_pcm_stream(tts.stream_pcm(reply_text, provider=TTS_PROVIDER))
     else:
-        await _play_audio_fallback(audio)
+        # Batch: synthesize full MP3 then play
+        audio = await tts.synthesize(reply_text, provider=TTS_PROVIDER)
+        if _engine:
+            await _engine.play_audio(audio)
+        else:
+            await _play_audio_fallback(audio)
 
     _activate()
 
