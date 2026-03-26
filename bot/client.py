@@ -166,6 +166,7 @@ def create_bot(agent: Agent) -> discord.Client:
                 runner = HeartbeatRunner(
                     agent=agent,
                     deliver_fn=_deliver_heartbeat,
+                    channel_id=str(channel_id),
                     interval=HEARTBEAT_INTERVAL,
                     active_hours_start=HEARTBEAT_ACTIVE_START,
                     active_hours_end=HEARTBEAT_ACTIVE_END,
@@ -295,6 +296,9 @@ def create_bot(agent: Agent) -> discord.Client:
         # 5% chance to ignore messages from other bots
         if message.author.bot and random.random() < 0.05:
             log.debug("ignoring bot message from %s (5%% skip)", message.author)
+            return
+
+        if not message.content.strip() and not message.attachments:
             return
 
         if not _should_handle(message):

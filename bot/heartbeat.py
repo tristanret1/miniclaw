@@ -210,6 +210,7 @@ class HeartbeatRunner:
         agent,
         deliver_fn,
         *,
+        channel_id: str = "",
         interval: str = "",
         active_hours_start: str = "",
         active_hours_end: str = "",
@@ -219,6 +220,7 @@ class HeartbeatRunner:
     ):
         self.agent = agent
         self._deliver_fn = deliver_fn  # async fn(text: str) -> None
+        self._channel_id = channel_id
         self._interval = interval or DEFAULT_INTERVAL
         self._active_start = active_hours_start
         self._active_end = active_hours_end
@@ -282,11 +284,11 @@ class HeartbeatRunner:
         context_parts.append(f"\n\n---\n\nHEARTBEAT.md contents:\n{checklist}")
         prompt = "".join(context_parts)
 
-        # Session key: isolated or persistent
+        # Session key: use channel_id to share memory with the channel
         if self._isolated:
-            session_key = f"heartbeat:{self.agent.name}:{int(time.time())}"
+            session_key = f"{self._channel_id}:heartbeat:{int(time.time())}"
         else:
-            session_key = f"heartbeat:{self.agent.name}"
+            session_key = f"{self._channel_id}:heartbeat"
 
         # Call LLM
         try:
