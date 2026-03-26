@@ -90,6 +90,7 @@ async def _send_greeting(bot: discord.Client, agent: Agent) -> None:
         history = await session_mgr.get_history(session_key)
 
         summary = ""
+        log.debug("greeting: loaded %d history messages for session %s", len(history), session_key)
         if history:
             # Extract text from history, truncate to keep summary request small
             lines = []
@@ -99,6 +100,7 @@ async def _send_greeting(bot: discord.Client, agent: Agent) -> None:
                 if text.strip():
                     lines.append(f"{role}: {text[:200]}")
             history_text = "\n".join(lines[-30:])  # last 30 messages max
+            log.debug("greeting: history_text (%d chars):\n%s", len(history_text), history_text[:1000])
 
             if history_text.strip():
                 summary = await llm.reply(
@@ -106,14 +108,20 @@ async def _send_greeting(bot: discord.Client, agent: Agent) -> None:
                     f"请用500字以内总结以下对话历史的要点，只输出总结内容：\n\n{history_text}",
                     agent=agent,
                 )
+                log.debug("greeting: summary result (%d chars): %s", len(summary), summary[:500])
+            else:
+                log.debug("greeting: history_text is empty after extraction")
 
             # Clear the greeting session so it starts fresh
             await session_mgr.clear(session_key)
+        else:
+            log.debug("greeting: no history found for session %s", session_key)
 
         # Build greeting prompt with summary context
         prompt = "你刚刚上线了，用一句话跟大家打个招呼吧。"
         if summary.strip():
             prompt = f"以下是你之前运行时发生的所有记忆汇总：\n\n{summary[:500]}\n\n---\n\n{prompt}"
+        log.debug("greeting: final prompt: %s", prompt[:500])
 
         greeting = await llm.reply(session_key, prompt, agent=agent)
         await channel.send(greeting[:2000])
