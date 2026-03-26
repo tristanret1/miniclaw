@@ -11,7 +11,7 @@ import wave
 
 from openai import AsyncOpenAI
 
-from bot.config import OPENAI_API_KEY, STT_MODEL, VOICE_SAMPLE_RATE
+from bot.config import OPENAI_API_KEY, STT_MODEL, STT_LANGUAGE, VOICE_SAMPLE_RATE
 from bot.logger import get_logger
 
 log = get_logger("stt")
@@ -42,6 +42,7 @@ async def transcribe(
     *,
     client: AsyncOpenAI | None = None,
     model: str | None = None,
+    language: str | None = None,
     sample_rate: int | None = None,
 ) -> str:
     """Transcribe PCM audio bytes to text using OpenAI Whisper.
@@ -56,10 +57,14 @@ async def transcribe(
     wav_bytes = _pcm_to_wav(audio_bytes, sample_rate=sr)
 
     try:
-        transcription = await c.audio.transcriptions.create(
-            model=model or STT_MODEL,
-            file=("audio.wav", wav_bytes, "audio/wav"),
-        )
+        kwargs: dict = {
+            "model": model or STT_MODEL,
+            "file": ("audio.wav", wav_bytes, "audio/wav"),
+        }
+        lang = language or STT_LANGUAGE
+        if lang:
+            kwargs["language"] = lang
+        transcription = await c.audio.transcriptions.create(**kwargs)
         text = transcription.text.strip()
         if text:
             log.debug("STT: %s", text[:200])

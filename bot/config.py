@@ -95,11 +95,12 @@ IMESSAGE_SERVICE = os.getenv("IMESSAGE_SERVICE", "auto")  # "imessage", "sms", o
 
 # Voice gateway (local microphone → STT → LLM → TTS → speaker)
 VOICE_ENABLED = os.getenv("VOICE_ENABLED", "false").lower() in ("true", "1", "yes")
-WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "miniclaw,小爪").split(",") if w.strip()]
+WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "Peter, 平平").split(",") if w.strip()]
 TTS_PROVIDER = os.getenv("TTS_PROVIDER", "openai")  # "openai" or "edge"
 TTS_VOICE = os.getenv("TTS_VOICE", "alloy")  # OpenAI voice name
 TTS_MODEL = os.getenv("TTS_MODEL", "gpt-4o-mini-tts")  # OpenAI TTS model
-STT_MODEL = os.getenv("STT_MODEL", "whisper-1")  # OpenAI Whisper model
+STT_MODEL = os.getenv("STT_MODEL", "gpt-4o-transcribe")  # OpenAI STT model
+STT_LANGUAGE = os.getenv("STT_LANGUAGE", "zh")  # language hint for STT
 VOICE_SILENCE_THRESHOLD = int(os.getenv("VOICE_SILENCE_THRESHOLD", "500"))  # RMS threshold
 VOICE_SILENCE_DURATION = float(os.getenv("VOICE_SILENCE_DURATION", "1.5"))  # seconds of silence to segment
 VOICE_SAMPLE_RATE = int(os.getenv("VOICE_SAMPLE_RATE", "16000"))  # Hz
