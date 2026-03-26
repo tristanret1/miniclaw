@@ -243,7 +243,7 @@ def create_bot(agent: Agent) -> discord.Client:
         content = _extract_content(message)
         image_urls = _extract_image_urls(message)
 
-        if not content and not image_urls:
+        if not content.strip() and not image_urls:
             return
 
         # Handle /heartbeat — manual trigger
