@@ -65,6 +65,9 @@ async def _load_from_db(session_key: str, limit: int, db_path: Path | None = Non
             content = json.loads(row["content"])
         except (json.JSONDecodeError, TypeError):
             content = row["content"]
+        # Ensure content is str or list/dict — coerce bare scalars (int, float)
+        if not isinstance(content, (str, list, dict)):
+            content = str(content)
         history.append({"role": row["role"], "content": content})
 
     if history:
@@ -91,6 +94,9 @@ async def _pg_load(session_key: str, limit: int) -> list[Message]:
             content = json.loads(row["content"])
         except (json.JSONDecodeError, TypeError):
             content = row["content"]
+        # Ensure content is str or list/dict — coerce bare scalars (int, float)
+        if not isinstance(content, (str, list, dict)):
+            content = str(content)
         history.append({"role": row["role"], "content": content})
 
     if history:
@@ -103,7 +109,7 @@ async def _persist(session_key: str, role: str, content: Content, db_path: Path 
     if isinstance(content, (list, dict)):
         content_str = json.dumps(content, ensure_ascii=False)
     else:
-        content_str = content
+        content_str = str(content)
 
     if use_postgres():
         from bot.db import get_pool
