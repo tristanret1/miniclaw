@@ -47,8 +47,20 @@ class TestWakeWordCheck:
         result = check("miniclaw, play some music", wake_words=["miniclaw"])
         assert result == "play some music"
 
-    def test_wake_word_mid_sentence_ignored(self):
-        """Only match wake word at the start of the utterance."""
+    def test_wake_word_mid_sentence(self):
+        """Match wake word even with greeting/filler before it."""
         from bot.wake import check
         result = check("hey miniclaw do something", wake_words=["miniclaw"])
+        assert result == "do something"
+
+    def test_wake_word_with_chinese_greeting(self):
+        """Match wake word after Chinese greeting."""
+        from bot.wake import check
+        result = check("嗨，平平，下午好呀", wake_words=["平平"])
+        assert result == "下午好呀"
+
+    def test_no_wake_word_still_returns_none(self):
+        """No wake word at all still returns None."""
+        from bot.wake import check
+        result = check("today is a good day", wake_words=["miniclaw"])
         assert result is None

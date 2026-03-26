@@ -1,4 +1,4 @@
-"""Wake word gate — detects wake words at the start of STT transcriptions.
+"""Wake word gate — detects wake words in STT transcriptions.
 
 Returns the command portion (text after the wake word) if a wake word is found,
 or None if no wake word is detected.
@@ -10,10 +10,14 @@ from bot.config import WAKE_WORDS as DEFAULT_WAKE_WORDS
 
 
 def check(text: str, *, wake_words: list[str] | None = None) -> str | None:
-    """Check if text starts with a wake word.
+    """Check if text contains a wake word.
+
+    Searches for the wake word anywhere in the text (not just the start),
+    since spoken language often has greetings or filler before the wake word.
+    E.g., "嗨，平平，下午好" or "hey peter what time is it"
 
     Returns the command text after the wake word (stripped), or None if
-    no wake word is found. Wake word must appear at the start of the text.
+    no wake word is found.
     """
     if not text:
         return None
@@ -23,10 +27,11 @@ def check(text: str, *, wake_words: list[str] | None = None) -> str | None:
 
     for word in words:
         wl = word.lower()
-        if not text_lower.startswith(wl):
+        pos = text_lower.find(wl)
+        if pos == -1:
             continue
         # Extract everything after the wake word (preserve original casing)
-        rest_full = text.strip()[len(wl):]
+        rest_full = text.strip()[pos + len(wl):]
         # Strip leading punctuation/whitespace that STT might add
         rest_full = rest_full.lstrip(" ,，:：、.。!！?？")
         return rest_full.strip()
