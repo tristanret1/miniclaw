@@ -75,14 +75,47 @@ GREETING_CHANNEL_ID = 1482258781860532344
 
 
 async def _send_greeting(bot: discord.Client, agent: Agent) -> None:
-    """Send a startup greeting to the designated channel."""
+    """Send a startup greeting with a summary of past conversations."""
     try:
         channel = bot.get_channel(GREETING_CHANNEL_ID)
         if channel is None:
             channel = await bot.fetch_channel(GREETING_CHANNEL_ID)
 
         session_key = f"{GREETING_CHANNEL_ID}:system"
-        greeting = await llm.reply(session_key, "你刚刚上线了，用一句话跟大家打个招呼吧", agent=agent)
+
+        # Load history and build a summary instead of carrying full history
+        from bot.session import SessionManager
+        from bot.message import extract_text
+        session_mgr = agent.session_mgr or SessionManager()
+        history = await session_mgr.get_history(session_key)
+
+        summary = ""
+        if history:
+            # Extract text from history, truncate to keep summary request small
+            lines = []
+            for msg in history:
+                role = msg.get("role", "")
+                text = extract_text(msg.get("content", ""))
+                if text.strip():
+                    lines.append(f"{role}: {text[:200]}")
+            history_text = "\n".join(lines[-30:])  # last 30 messages max
+
+            if history_text.strip():
+                summary = await llm.reply(
+                    f"{session_key}:summary:{int(datetime.now().timestamp())}",
+                    f"请用500字以内总结以下对话历史的要点，只输出总结内容：\n\n{history_text}",
+                    agent=agent,
+                )
+
+            # Clear the greeting session so it starts fresh
+            await session_mgr.clear(session_key)
+
+        # Build greeting prompt with summary context
+        prompt = "你刚刚上线了，用一句话跟大家打个招呼吧。"
+        if summary.strip():
+            prompt = f"以下是你之前运行时发生的所有记忆汇总：\n\n{summary[:500]}\n\n---\n\n{prompt}"
+
+        greeting = await llm.reply(session_key, prompt, agent=agent)
         await channel.send(greeting[:2000])
         log.info("startup greeting sent to channel %s", GREETING_CHANNEL_ID)
     except Exception as e:
