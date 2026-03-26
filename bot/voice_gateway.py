@@ -28,6 +28,9 @@ log = get_logger("voice")
 
 SESSION_KEY = "voice:local"
 
+# Set while TTS is playing — suppresses mic input so the bot doesn't hear itself
+_playing = False
+
 
 # ── VAD helpers ───────────────────────────────────────────────────────────────
 
@@ -100,19 +103,25 @@ class AudioSegmenter:
 
 
 async def _play_audio(mp3_bytes: bytes) -> None:
-    """Play MP3 audio through the default speaker using afplay (macOS) or ffplay."""
+    """Play MP3 audio through the default speaker using afplay (macOS) or ffplay.
+
+    Sets _playing flag to suppress mic input during playback so the bot
+    doesn't hear and re-process its own TTS output.
+    """
+    global _playing
+
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
         f.write(mp3_bytes)
         tmp_path = f.name
 
     try:
-        # macOS built-in afplay; fall back to ffplay if available
         import shutil
         if shutil.which("afplay"):
             cmd = ["afplay", tmp_path]
         else:
             cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", tmp_path]
 
+        _playing = True
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.DEVNULL,
@@ -120,6 +129,7 @@ async def _play_audio(mp3_bytes: bytes) -> None:
         )
         await proc.wait()
     finally:
+        _playing = False
         Path(tmp_path).unlink(missing_ok=True)
 
 
@@ -204,6 +214,10 @@ async def start_voice_gateway() -> None:
     try:
         while True:
             frame = await audio_queue.get()
+            # Skip mic input while TTS is playing to avoid hearing ourselves
+            if _playing:
+                segmenter.reset()
+                continue
             utterance = segmenter.feed(frame)
             if utterance:
                 # Process in background so we keep listening
