@@ -1,0 +1,26 @@
+{
+  "agents": [
+    {
+      "name": "default",
+      "discord_token": "MTQ4MTQxMTgyNzI2NjIyODM4Ng.Gx6ZHS.Yk4juybveSkSyzV4BUnBnst0Zpax5Y6Gu3XSJU",
+      "workspace": "workspace",
+      "model": "claude-opus-4-6",
+      "provider": "anthropic"
+    },
+    {
+      "name": "Kokiri",
+      "discord_token": "MTQ4MjgzNjEwODEzMDc4MzI2Mw.GoDozv.gC31-USNEOepcLMmi0s87bZrZqGgAxza2wm9yc",
+      "workspace": "workspace_2",
+      "model": "claude-sonnet-4-20250514",
+      "provider": "anthropic"
+    },
+    {
+      "name": "voice",
+      "discord_token": "",
+      "workspace": "workspace_voice",
+      "model": "claude-sonnet-4-20250514",
+      "provider": "anthropic",
+      "voice_only": true
+    }
+  ]
+}

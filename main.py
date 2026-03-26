@@ -52,13 +52,19 @@ async def main():
 
     tasks = []
 
+    # Find the voice agent (if any)
+    voice_agent = next((a for a in agents if a.name == "voice"), None)
+
     if _voice_only:
         # Voice-only mode — skip Discord bots and other gateways
         from bot.voice_gateway import start_voice_gateway
-        tasks.append(start_voice_gateway())
-        print("Voice-only mode — Discord bots skipped")
+        tasks.append(start_voice_gateway(agent=voice_agent))
+        print(f"Voice-only mode (agent={voice_agent.name if voice_agent else 'default'})")
     else:
         for agent in agents:
+            # Skip voice-only agents (no Discord token)
+            if not agent.discord_token:
+                continue
             bot = create_bot(agent)
             tasks.append(bot.start(agent.discord_token))
 
@@ -72,7 +78,7 @@ async def main():
 
         if VOICE_ENABLED:
             from bot.voice_gateway import start_voice_gateway
-            tasks.append(start_voice_gateway())
+            tasks.append(start_voice_gateway(agent=voice_agent))
 
     try:
         await asyncio.gather(*tasks)

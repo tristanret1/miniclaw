@@ -79,8 +79,8 @@ def _load_from_json() -> list[Agent] | None:
         token = entry.get("discord_token", "").strip()
         workspace = entry.get("workspace", f"workspace_{name}")
 
-        if not name or not token:
-            log.warning("skipping agent entry with missing name/token: %s", entry)
+        if not name:
+            log.warning("skipping agent entry with missing name: %s", entry)
             continue
 
         if not entry.get("enabled", True):

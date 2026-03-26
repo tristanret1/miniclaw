@@ -11,6 +11,7 @@ import asyncio
 import math
 import struct
 import time
+from typing import TYPE_CHECKING
 
 from bot import llm, stt, tts, wake
 from bot.config import (
@@ -21,6 +22,9 @@ from bot.config import (
 )
 from bot.logger import get_logger
 from bot.message import build_user_content
+
+if TYPE_CHECKING:
+    from bot.agent import Agent
 
 log = get_logger("voice")
 
@@ -36,6 +40,9 @@ _active_until: float = 0.0
 
 # AudioEngine instance (set during gateway startup)
 _engine = None
+
+# Voice agent (set during gateway startup)
+_agent: Agent | None = None
 
 
 # ── VAD helpers ───────────────────────────────────────────────────────────────
@@ -186,7 +193,7 @@ async def _process_utterance(audio_bytes: bytes) -> None:
     user_content = build_user_content(user_text, [])
 
     # 3. LLM
-    reply_text = await llm.reply(SESSION_KEY, user_content)
+    reply_text = await llm.reply(SESSION_KEY, user_content, agent=_agent)
     if not reply_text.strip():
         return
 
@@ -237,13 +244,21 @@ async def _play_audio_fallback(mp3_bytes: bytes) -> None:
 # ── Gateway lifecycle ─────────────────────────────────────────────────────────
 
 
-async def start_voice_gateway() -> None:
+async def start_voice_gateway(agent: Agent | None = None) -> None:
     """Start the voice gateway. Listens on local microphone until cancelled.
 
     Uses macOS AVAudioEngine with voice processing (AEC) for echo cancellation.
     TTS audio is played through the same engine so AEC can subtract it from mic input.
+
+    Args:
+        agent: Optional Agent for voice-specific personality, session, and memory.
+               If None, uses global defaults.
     """
-    global _engine
+    global _engine, _agent
+    _agent = agent
+
+    if agent:
+        log.info("Voice agent: %s (workspace=%s)", agent.name, agent.workspace_dir)
 
     log.info("Voice gateway starting (sample_rate=%d, threshold=%d, silence=%.1fs)",
              VOICE_SAMPLE_RATE, VOICE_SILENCE_THRESHOLD, VOICE_SILENCE_DURATION)
