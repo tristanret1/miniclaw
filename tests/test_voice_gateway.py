@@ -58,6 +58,14 @@ class TestAudioSegmenter:
 class TestProcessUtterance:
     """End-to-end utterance processing tests."""
 
+    @pytest.fixture(autouse=True)
+    def reset_conversation_state(self):
+        """Ensure each test starts in wake-word-waiting mode."""
+        import bot.voice_gateway as vg
+        vg._active_until = 0.0
+        yield
+        vg._active_until = 0.0
+
     @pytest.mark.asyncio
     async def test_wake_word_triggers_llm(self):
         """When wake word detected, utterance is sent to LLM and response is spoken."""
@@ -74,8 +82,8 @@ class TestProcessUtterance:
             mock_play.assert_called_once_with(b"audio")
 
     @pytest.mark.asyncio
-    async def test_no_wake_word_skips_llm(self):
-        """When no wake word detected, LLM is not called."""
+    async def test_no_wake_word_not_active_skips_llm(self):
+        """When no wake word and not in conversation mode, LLM is not called."""
         from bot.voice_gateway import _process_utterance
 
         with patch("bot.voice_gateway.stt.transcribe", new_callable=AsyncMock, return_value="random speech"), \
@@ -85,6 +93,65 @@ class TestProcessUtterance:
             await _process_utterance(b"fake-audio")
 
             mock_llm.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_active_mode_no_wake_word_needed(self):
+        """In conversation mode, utterances go to LLM without wake word."""
+        import bot.voice_gateway as vg
+        from bot.voice_gateway import _process_utterance
+
+        # Simulate active conversation mode
+        vg._activate()
+
+        with patch("bot.voice_gateway.stt.transcribe", new_callable=AsyncMock, return_value="what time is it"), \
+             patch("bot.voice_gateway.wake.check", return_value=None), \
+             patch("bot.voice_gateway.llm.reply", new_callable=AsyncMock, return_value="It's 3pm") as mock_llm, \
+             patch("bot.voice_gateway.tts.synthesize", new_callable=AsyncMock, return_value=b"audio"), \
+             patch("bot.voice_gateway._play_audio", new_callable=AsyncMock):
+
+            await _process_utterance(b"fake-audio")
+
+            mock_llm.assert_called_once()
+            # Check the user content passed to LLM contains the raw text
+            call_args = mock_llm.call_args
+            assert call_args[0][1] == "what time is it"
+
+    @pytest.mark.asyncio
+    async def test_conversation_mode_expires(self):
+        """After timeout, conversation mode expires and wake word is needed again."""
+        import bot.voice_gateway as vg
+        from bot.voice_gateway import _process_utterance
+
+        # Set active_until to the past (expired)
+        vg._active_until = 0.0
+
+        with patch("bot.voice_gateway.stt.transcribe", new_callable=AsyncMock, return_value="what time is it"), \
+             patch("bot.voice_gateway.wake.check", return_value=None), \
+             patch("bot.voice_gateway.llm.reply", new_callable=AsyncMock) as mock_llm:
+
+            await _process_utterance(b"fake-audio")
+
+            mock_llm.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_wake_word_activates_conversation(self):
+        """After wake word, subsequent utterances don't need wake word."""
+        import bot.voice_gateway as vg
+        from bot.voice_gateway import _process_utterance, _is_active
+
+        assert not _is_active()
+
+        # First utterance with wake word
+        with patch("bot.voice_gateway.stt.transcribe", new_callable=AsyncMock, return_value="miniclaw hello"), \
+             patch("bot.voice_gateway.wake.check", return_value="hello"), \
+             patch("bot.voice_gateway.llm.reply", new_callable=AsyncMock, return_value="Hi!"), \
+             patch("bot.voice_gateway.tts.synthesize", new_callable=AsyncMock, return_value=b"audio"), \
+             patch("bot.voice_gateway._play_audio", new_callable=AsyncMock):
+
+            await _process_utterance(b"fake-audio")
+
+        # Now should be in active mode
+        assert _is_active()
 
     @pytest.mark.asyncio
     async def test_empty_transcription_skips(self):

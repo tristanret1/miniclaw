@@ -10,6 +10,7 @@ import asyncio
 import math
 import struct
 import tempfile
+import time
 from pathlib import Path
 
 import pyaudio
@@ -30,6 +31,10 @@ SESSION_KEY = "voice:local"
 
 # Set while TTS is playing — suppresses mic input so the bot doesn't hear itself
 _playing = False
+
+# Conversation mode: after wake word, stay active for this many seconds of silence
+_CONVERSATION_TIMEOUT = 30.0  # seconds without speech before returning to wake mode
+_active_until: float = 0.0  # monotonic timestamp; 0 = waiting for wake word
 
 
 # ── VAD helpers ───────────────────────────────────────────────────────────────
@@ -136,8 +141,31 @@ async def _play_audio(mp3_bytes: bytes) -> None:
 # ── Utterance processing ─────────────────────────────────────────────────────
 
 
+def _is_active() -> bool:
+    """Check if we're in active conversation mode (wake word already said)."""
+    return time.monotonic() < _active_until
+
+
+def _activate() -> None:
+    """Enter/extend active conversation mode."""
+    global _active_until
+    _active_until = time.monotonic() + _CONVERSATION_TIMEOUT
+    log.debug("conversation active for %.0fs", _CONVERSATION_TIMEOUT)
+
+
+def _deactivate() -> None:
+    """Return to wake word listening mode."""
+    global _active_until
+    _active_until = 0.0
+
+
 async def _process_utterance(audio_bytes: bytes) -> None:
-    """Process a single utterance: STT → wake check → LLM → TTS → play."""
+    """Process a single utterance: STT → (wake check or active mode) → LLM → TTS → play.
+
+    After wake word is detected, enters conversation mode for _CONVERSATION_TIMEOUT
+    seconds. During conversation mode, all utterances go directly to the LLM
+    without needing a wake word.
+    """
     # 1. Transcribe
     text = await stt.transcribe(audio_bytes)
     if not text:
@@ -145,16 +173,29 @@ async def _process_utterance(audio_bytes: bytes) -> None:
 
     log.info("heard: %s", text[:200])
 
-    # 2. Wake word check
-    command = wake.check(text)
-    if command is None:
-        log.debug("no wake word detected, ignoring")
-        return
+    # 2. Determine user text — wake word or active conversation
+    if _is_active():
+        # Already in conversation mode — send directly, also check for wake word
+        # in case user says it again (strip it if present)
+        command = wake.check(text)
+        user_text = command if command is not None else text
+    else:
+        # Waiting for wake word
+        command = wake.check(text)
+        if command is None:
+            log.debug("no wake word, not active — ignoring")
+            return
+        user_text = command
+        log.info("wake word detected!")
 
-    log.info("wake word detected, command: %s", command[:200] if command else "(empty)")
+    # Enter/extend conversation mode
+    _activate()
 
     # If wake word only (no command), use a greeting prompt
-    user_text = command if command else "hey"
+    if not user_text:
+        user_text = "hey"
+
+    log.info("command: %s", user_text[:200])
     user_content = build_user_content(user_text, [])
 
     # 3. LLM
@@ -164,11 +205,17 @@ async def _process_utterance(audio_bytes: bytes) -> None:
 
     log.info("reply: %s", reply_text[:200])
 
+    # Extend conversation mode after getting a reply
+    _activate()
+
     # 4. TTS
     audio = await tts.synthesize(reply_text, provider=TTS_PROVIDER)
 
     # 5. Play
     await _play_audio(audio)
+
+    # Extend again after playback so user has time to respond
+    _activate()
 
 
 # ── Gateway lifecycle ─────────────────────────────────────────────────────────
