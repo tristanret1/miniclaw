@@ -52,14 +52,22 @@ async def transcribe(
     if not audio_bytes:
         return ""
 
-    c = client or _get_openai_client()
+    # Skip very short audio (< 0.5s) — likely noise, not speech
     sr = sample_rate or VOICE_SAMPLE_RATE
+    min_samples = int(sr * 0.5)  # 0.5 seconds
+    n_samples = len(audio_bytes) // 2  # 16-bit = 2 bytes per sample
+    if n_samples < min_samples:
+        log.debug("audio too short (%d samples, need %d), skipping", n_samples, min_samples)
+        return ""
+
+    c = client or _get_openai_client()
     wav_bytes = _pcm_to_wav(audio_bytes, sample_rate=sr)
 
     try:
         kwargs: dict = {
             "model": model or STT_MODEL,
             "file": ("audio.wav", wav_bytes, "audio/wav"),
+            "temperature": 0,  # conservative transcription, reduce hallucinations
         }
         lang = language or STT_LANGUAGE
         if lang:

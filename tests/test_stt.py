@@ -18,7 +18,7 @@ class TestWhisperSTT:
         mock_client = AsyncMock()
         mock_client.audio.transcriptions.create = AsyncMock(return_value=mock_transcription)
 
-        result = await transcribe(b"fake-audio", client=mock_client)
+        result = await transcribe(b"\x00" * 32000, client=mock_client)
         assert result == "hello world"
 
     @pytest.mark.asyncio
@@ -32,7 +32,7 @@ class TestWhisperSTT:
         mock_client = AsyncMock()
         mock_client.audio.transcriptions.create = AsyncMock(return_value=mock_transcription)
 
-        await transcribe(b"audio", client=mock_client, model="whisper-1")
+        await transcribe(b"\x00" * 32000, client=mock_client, model="whisper-1")
         call_kwargs = mock_client.audio.transcriptions.create.call_args[1]
         assert call_kwargs["model"] == "whisper-1"
 
@@ -47,7 +47,7 @@ class TestWhisperSTT:
         mock_client = AsyncMock()
         mock_client.audio.transcriptions.create = AsyncMock(return_value=mock_transcription)
 
-        await transcribe(b"\x00" * 3200, client=mock_client, sample_rate=16000)
+        await transcribe(b"\x00" * 32000, client=mock_client, sample_rate=16000)
         call_kwargs = mock_client.audio.transcriptions.create.call_args[1]
         file_arg = call_kwargs["file"]
         assert file_arg[0] == "audio.wav"
@@ -68,5 +68,13 @@ class TestWhisperSTT:
         mock_client = AsyncMock()
         mock_client.audio.transcriptions.create = AsyncMock(side_effect=Exception("API down"))
 
-        result = await transcribe(b"audio-data", client=mock_client)
+        result = await transcribe(b"\x00" * 32000, client=mock_client)
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_transcribe_short_audio_skipped(self):
+        """transcribe() returns empty for audio shorter than 0.5s."""
+        from bot.stt import transcribe
+
+        result = await transcribe(b"\x00" * 100)  # way too short
         assert result == ""
