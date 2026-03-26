@@ -199,6 +199,7 @@ def strip_tool_blocks(messages: list[Message]) -> list[Message]:
     """
     cleaned: list[Message] = []
     for msg in messages:
+        log.debug("stripping tool blocks from message: %s", msg)
         content = msg.get("content", "")
         role = msg.get("role", "user")
 
