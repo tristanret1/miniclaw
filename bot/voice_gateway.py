@@ -29,8 +29,10 @@ log = get_logger("voice")
 
 SESSION_KEY = "voice:local"
 
-# Set while TTS is playing — suppresses mic input so the bot doesn't hear itself
-_playing = False
+# Suppresses mic input during playback + cooldown so the bot doesn't hear itself.
+# Stored as a monotonic timestamp — mic is muted until this time passes.
+_muted_until: float = 0.0
+_PLAYBACK_COOLDOWN = 1.5  # seconds after playback to keep mic muted (echo decay)
 
 # Conversation mode: after wake word, stay active for this many seconds of silence
 _CONVERSATION_TIMEOUT = 30.0  # seconds without speech before returning to wake mode
@@ -107,14 +109,29 @@ class AudioSegmenter:
 # ── Audio playback ────────────────────────────────────────────────────────────
 
 
+def _is_muted() -> bool:
+    """Check if mic is muted (during playback or cooldown)."""
+    return time.monotonic() < _muted_until
+
+
+def _mute() -> None:
+    """Mute mic. Extended by _mute_cooldown() after playback ends."""
+    global _muted_until
+    _muted_until = float("inf")  # muted until explicitly released
+
+
+def _mute_cooldown() -> None:
+    """Release mute with a cooldown period for echo decay."""
+    global _muted_until
+    _muted_until = time.monotonic() + _PLAYBACK_COOLDOWN
+
+
 async def _play_audio(mp3_bytes: bytes) -> None:
     """Play MP3 audio through the default speaker using afplay (macOS) or ffplay.
 
-    Sets _playing flag to suppress mic input during playback so the bot
-    doesn't hear and re-process its own TTS output.
+    Mutes mic during playback + cooldown period so the bot doesn't hear
+    and re-process its own TTS output.
     """
-    global _playing
-
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
         f.write(mp3_bytes)
         tmp_path = f.name
@@ -126,7 +143,7 @@ async def _play_audio(mp3_bytes: bytes) -> None:
         else:
             cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", tmp_path]
 
-        _playing = True
+        _mute()
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.DEVNULL,
@@ -134,7 +151,7 @@ async def _play_audio(mp3_bytes: bytes) -> None:
         )
         await proc.wait()
     finally:
-        _playing = False
+        _mute_cooldown()  # keep muted for cooldown period after playback
         Path(tmp_path).unlink(missing_ok=True)
 
 
@@ -261,8 +278,8 @@ async def start_voice_gateway() -> None:
     try:
         while True:
             frame = await audio_queue.get()
-            # Skip mic input while TTS is playing to avoid hearing ourselves
-            if _playing:
+            # Skip mic input during playback + cooldown to avoid hearing ourselves
+            if _is_muted():
                 segmenter.reset()
                 continue
             utterance = segmenter.feed(frame)
