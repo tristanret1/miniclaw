@@ -11,6 +11,7 @@ from bot.config import (
     HEARTBEAT_ENABLED, HEARTBEAT_INTERVAL, HEARTBEAT_CHANNEL_ID,
     HEARTBEAT_ACTIVE_START, HEARTBEAT_ACTIVE_END, HEARTBEAT_ACTIVE_TZ,
     HEARTBEAT_ACK_MAX_CHARS, HEARTBEAT_ISOLATED,
+    ALLOWED_DM_USERS,
     get_loaded_skills,
 )
 from bot.skills import match_skill_command, build_skill_user_message, build_skill_command_list
@@ -225,7 +226,11 @@ def create_bot(agent: Agent) -> discord.Client:
     def _should_handle(message: discord.Message) -> bool:
         if message.guild is not None:
             return bot.user in message.mentions
-        return True  # DM
+        # DM — only allow whitelisted users
+        if not ALLOWED_DM_USERS or message.author.id not in ALLOWED_DM_USERS:
+            log.debug("DM from %s (%s) blocked — not in ALLOWED_DM_USERS", message.author, message.author.id)
+            return False
+        return True
 
     def _extract_content(message: discord.Message) -> str:
         content = message.content

@@ -93,6 +93,11 @@ IMESSAGE_DB_PATH = os.getenv("IMESSAGE_DB_PATH", "")  # path to Messages/chat.db
 IMESSAGE_ALLOW_FROM = [s.strip() for s in os.getenv("IMESSAGE_ALLOW_FROM", "").split(",") if s.strip()]
 IMESSAGE_SERVICE = os.getenv("IMESSAGE_SERVICE", "auto")  # "imessage", "sms", or "auto"
 
+# DM whitelist — only these user IDs can DM the bot (empty = deny all DMs)
+ALLOWED_DM_USERS: set[int] = {
+    int(uid.strip()) for uid in os.getenv("ALLOWED_DM_USERS", "").split(",") if uid.strip()
+}
+
 # Auto-reply settings
 AUTO_REPLY_ENABLED = os.getenv("AUTO_REPLY_ENABLED", "false").lower() in ("true", "1", "yes")
 AUTO_REPLY_CHANNELS = os.getenv("AUTO_REPLY_CHANNELS", "").split(",")  # Channel IDs where auto-reply is allowed
