@@ -101,6 +101,7 @@ TTS_VOICE = os.getenv("TTS_VOICE", "alloy")  # OpenAI voice name
 TTS_MODEL = os.getenv("TTS_MODEL", "gpt-4o-mini-tts")  # OpenAI TTS model
 STT_MODEL = os.getenv("STT_MODEL", "gpt-4o-transcribe")  # OpenAI STT model
 STT_LANGUAGE = os.getenv("STT_LANGUAGE", "zh")  # language hint for STT
+STT_PROMPT = os.getenv("STT_PROMPT", "") or f"This audio may contain these wake words: {', '.join(WAKE_WORDS)}"
 VOICE_SILENCE_THRESHOLD = int(os.getenv("VOICE_SILENCE_THRESHOLD", "500"))  # RMS threshold
 VOICE_SILENCE_DURATION = float(os.getenv("VOICE_SILENCE_DURATION", "1.5"))  # seconds of silence to segment
 VOICE_SAMPLE_RATE = int(os.getenv("VOICE_SAMPLE_RATE", "16000"))  # Hz

@@ -11,7 +11,7 @@ import wave
 
 from openai import AsyncOpenAI
 
-from bot.config import OPENAI_API_KEY, STT_MODEL, STT_LANGUAGE, VOICE_SAMPLE_RATE
+from bot.config import OPENAI_API_KEY, STT_MODEL, STT_LANGUAGE, STT_PROMPT, VOICE_SAMPLE_RATE
 from bot.logger import get_logger
 
 log = get_logger("stt")
@@ -64,6 +64,8 @@ async def transcribe(
         lang = language or STT_LANGUAGE
         if lang:
             kwargs["language"] = lang
+        if STT_PROMPT:
+            kwargs["prompt"] = STT_PROMPT
         transcription = await c.audio.transcriptions.create(**kwargs)
         text = transcription.text.strip()
         if text:
