@@ -9,7 +9,7 @@ from __future__ import annotations
 import edge_tts
 from openai import AsyncOpenAI
 
-from bot.config import OPENAI_API_KEY, TTS_MODEL, TTS_VOICE
+from bot.config import OPENAI_API_KEY, TTS_MODEL, TTS_SPEED, TTS_VOICE
 from bot.logger import get_logger
 
 log = get_logger("tts")
@@ -38,6 +38,7 @@ async def synthesize_openai(
         model=model or TTS_MODEL,
         voice=voice or TTS_VOICE,
         input=text,
+        speed=TTS_SPEED,
         response_format="mp3",
     )
     return response.content
