@@ -202,8 +202,14 @@ async def _process_utterance(audio_bytes: bytes) -> None:
 
     # 4. TTS → Play (streaming if AudioEngine available)
     if _engine and TTS_PROVIDER == "openai":
-        # Stream PCM directly to AudioEngine — starts playing in ~0.5s
+        # Stream raw PCM directly to AudioEngine — starts playing in ~0.5s
         await _engine.play_pcm_stream(tts.stream_pcm(reply_text, provider=TTS_PROVIDER))
+    elif _engine and TTS_PROVIDER == "volcengine":
+        # Volcengine streams MP3 chunks — collect then play via AudioEngine
+        mp3_chunks: list[bytes] = []
+        async for chunk in tts.stream_volcengine(reply_text):
+            mp3_chunks.append(chunk)
+        await _engine.play_audio(b"".join(mp3_chunks))
     else:
         # Batch: synthesize full MP3 then play
         audio = await tts.synthesize(reply_text, provider=TTS_PROVIDER)

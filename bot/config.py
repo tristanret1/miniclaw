@@ -95,11 +95,16 @@ IMESSAGE_SERVICE = os.getenv("IMESSAGE_SERVICE", "auto")  # "imessage", "sms", o
 
 # Voice gateway (local microphone → STT → LLM → TTS → speaker)
 VOICE_ENABLED = os.getenv("VOICE_ENABLED", "false").lower() in ("true", "1", "yes")
-WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "Peter, 平平, 近平").split(",") if w.strip()]
-TTS_PROVIDER = os.getenv("TTS_PROVIDER", "openai")  # "openai" or "edge"
+WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "小圆, 小方").split(",") if w.strip()]
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "volcengine")  # "volcengine", "openai", or "edge"
 TTS_VOICE = os.getenv("TTS_VOICE", "cedar")  # OpenAI voice name
 TTS_MODEL = os.getenv("TTS_MODEL", "gpt-4o-mini-tts")  # OpenAI TTS model
 TTS_SPEED = float(os.getenv("TTS_SPEED", "1.2"))  # speech speed (0.25-4.0, default 1.2)
+
+# Volcengine TTS (火山引擎 / 豆包语音)
+VOLCENGINE_TTS_API_KEY = os.getenv("VOLCENGINE_TTS_API_KEY", "")
+VOLCENGINE_TTS_RESOURCE_ID = os.getenv("VOLCENGINE_TTS_RESOURCE_ID", "volc.service_type.10029")
+VOLCENGINE_TTS_SPEAKER = os.getenv("VOLCENGINE_TTS_SPEAKER", "zh_male_beijingxiaoye_emo_v2_mars_bigtts")
 STT_MODEL = os.getenv("STT_MODEL", "gpt-4o-transcribe")  # OpenAI STT model
 STT_LANGUAGE = os.getenv("STT_LANGUAGE", "zh")  # language hint for STT
 STT_PROMPT = os.getenv("STT_PROMPT", "") or f"This audio may contain these wake words: {', '.join(WAKE_WORDS)}"
