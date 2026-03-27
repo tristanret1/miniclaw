@@ -13,6 +13,7 @@ from bot.config import (
     TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN,
     TWILIO_FROM_NUMBER,
+    VOICE_ENABLED,
 )
 from bot.logger import get_logger
 from bot import acp, memory
@@ -312,6 +313,30 @@ SMS_TOOL = {
     },
 }
 
+VOICE_ANNOUNCE_TOOL = {
+    "name": "voice_announce",
+    "description": (
+        "Play a voice announcement on the local speaker device. "
+        "Use this to proactively deliver notifications, reminders, or messages "
+        "via TTS on the user's speaker — like receiving a phone call. "
+        "The announcement will play after any current audio finishes."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "message": {
+                "type": "string",
+                "description": "The text to speak aloud via TTS.",
+            },
+            "source": {
+                "type": "string",
+                "description": "Name of the sender/agent (e.g. '小圆'). Prefixed as '来自{source}的消息：' before the message.",
+            },
+        },
+        "required": ["message"],
+    },
+}
+
 HEALTH_LOG_TOOL = {
     "name": "health_log",
     "description": (
@@ -533,6 +558,9 @@ ALL_TOOLS = [
     CRON_CREATE_TOOL, CRON_LIST_TOOL, CRON_DELETE_TOOL, PHONE_CALL_TOOL, SMS_TOOL,
     IMESSAGE_SEND_TOOL,
 ]  # DISCORD_SEND_TOOL
+
+if VOICE_ENABLED:
+    ALL_TOOLS.append(VOICE_ANNOUNCE_TOOL)
 
 if GOOGLE_CALENDAR_ENABLED:
     ALL_TOOLS.append(GOOGLE_CALENDAR_TOOL)
@@ -883,6 +911,12 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None,
         if client:
             return await send_imessage(client, to=tool_input["to"], message=tool_input["message"])
         return await run_imessage_send(to=tool_input["to"], message=tool_input["message"])
+    if tool_name == "voice_announce":
+        from bot.voice_gateway import announce
+        return await announce(
+            message=tool_input["message"],
+            source=tool_input.get("source", agent_name),
+        )
     if tool_name == "google_calendar":
         gcal_input = {k: v for k, v in tool_input.items() if k != "action"}
         return await run_google_calendar(action=tool_input.get("action", ""), **gcal_input)

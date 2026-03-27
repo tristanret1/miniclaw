@@ -1,5 +1,6 @@
 """Tests for bot.voice_gateway — local microphone voice gateway."""
 
+import asyncio
 import struct
 import pytest
 from unittest.mock import AsyncMock, patch
@@ -164,3 +165,97 @@ class TestProcessUtterance:
             await _process_utterance(b"fake-audio")
 
             mock_wake.assert_not_called()
+
+
+class TestAnnounce:
+    """Voice announce (push notification) tests."""
+
+    @pytest.fixture(autouse=True)
+    def setup_queue(self):
+        """Ensure announce queue exists for each test."""
+        import bot.voice_gateway as vg
+        vg._announce_queue = asyncio.Queue()
+        yield
+        vg._announce_queue = None
+
+    @pytest.mark.asyncio
+    async def test_announce_queues_message(self):
+        """announce() puts a message on the queue."""
+        import bot.voice_gateway as vg
+        from bot.voice_gateway import announce
+
+        result = await announce("你好", source="小圆")
+        assert "queued" in result
+        assert not vg._announce_queue.empty()
+        msg, src = vg._announce_queue.get_nowait()
+        assert msg == "你好"
+        assert src == "小圆"
+
+    @pytest.mark.asyncio
+    async def test_announce_without_gateway_returns_error(self):
+        """announce() returns error when voice gateway is not running."""
+        import bot.voice_gateway as vg
+        from bot.voice_gateway import announce
+
+        vg._announce_queue = None
+        result = await announce("test")
+        assert "Error" in result
+
+    @pytest.mark.asyncio
+    async def test_announce_empty_message_returns_error(self):
+        """announce() rejects empty messages."""
+        from bot.voice_gateway import announce
+
+        result = await announce("   ")
+        assert "Error" in result
+
+    @pytest.mark.asyncio
+    async def test_play_announcement_with_source_prefix(self):
+        """_play_announcement prefixes the source name."""
+        from bot.voice_gateway import _play_announcement
+
+        with patch("bot.voice_gateway.tts.synthesize", new_callable=AsyncMock, return_value=b"audio") as mock_tts, \
+             patch("bot.voice_gateway._play_audio_fallback", new_callable=AsyncMock):
+
+            await _play_announcement("提醒你开会", "小圆")
+
+            mock_tts.assert_called_once()
+            spoken = mock_tts.call_args[0][0]
+            assert "来自小圆的消息" in spoken
+            assert "提醒你开会" in spoken
+
+    @pytest.mark.asyncio
+    async def test_play_announcement_no_source(self):
+        """_play_announcement without source speaks the message directly."""
+        from bot.voice_gateway import _play_announcement
+
+        with patch("bot.voice_gateway.tts.synthesize", new_callable=AsyncMock, return_value=b"audio") as mock_tts, \
+             patch("bot.voice_gateway._play_audio_fallback", new_callable=AsyncMock):
+
+            await _play_announcement("hello", "")
+
+            spoken = mock_tts.call_args[0][0]
+            assert spoken == "hello"
+
+    @pytest.mark.asyncio
+    async def test_drain_announcements_plays_all(self):
+        """_drain_announcements plays all queued messages in order."""
+        import bot.voice_gateway as vg
+        from bot.voice_gateway import _drain_announcements
+
+        vg._announce_queue.put_nowait(("msg1", "agent1"))
+        vg._announce_queue.put_nowait(("msg2", "agent2"))
+
+        played = []
+        async def fake_play(msg, src):
+            played.append((msg, src))
+
+        with patch("bot.voice_gateway._play_announcement", new=fake_play), \
+             patch("bot.voice_gateway._mute"), \
+             patch("bot.voice_gateway._mute_cooldown"):
+
+            await _drain_announcements()
+
+        assert len(played) == 2
+        assert played[0] == ("msg1", "agent1")
+        assert played[1] == ("msg2", "agent2")

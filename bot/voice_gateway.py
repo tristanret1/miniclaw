@@ -44,6 +44,9 @@ _engine = None
 # Voice agent (set during gateway startup)
 _agent: Agent | None = None
 
+# ── Announcement queue (push notifications from any agent) ───────────────────
+_announce_queue: asyncio.Queue[tuple[str, str]] | None = None  # (message, source)
+
 
 # ── VAD helpers ───────────────────────────────────────────────────────────────
 
@@ -247,6 +250,80 @@ async def _play_audio_fallback(mp3_bytes: bytes) -> None:
         Path(tmp_path).unlink(missing_ok=True)
 
 
+# ── Push announcements ───────────────────────────────────────────────────────
+
+
+async def announce(message: str, source: str = "") -> str:
+    """Queue a voice announcement for playback on the local speaker.
+
+    Can be called from any agent/tool. The announcement will play after any
+    current TTS finishes (non-interrupting).
+
+    Args:
+        message: Text to speak via TTS.
+        source: Name of the agent or channel that sent the announcement.
+
+    Returns:
+        Status string confirming the announcement was queued.
+    """
+    if _announce_queue is None:
+        return "Error: voice gateway is not running."
+
+    if not message.strip():
+        return "Error: empty announcement message."
+
+    _announce_queue.put_nowait((message.strip(), source.strip()))
+    log.info("announce queued: source=%s len=%d", source or "unknown", len(message))
+    return f"Announcement queued for voice playback (source={source or 'unknown'})."
+
+
+async def _play_announcement(message: str, source: str) -> None:
+    """Synthesize and play a single announcement. Caller must handle mute."""
+    # Prefix with source identification
+    if source:
+        spoken_text = f"来自{source}的消息：{message}"
+    else:
+        spoken_text = message
+
+    log.info("playing announcement: %s", spoken_text[:200])
+
+    if _engine and TTS_PROVIDER == "openai":
+        await _engine.play_pcm_stream(tts.stream_pcm(spoken_text, provider=TTS_PROVIDER))
+    elif _engine and TTS_PROVIDER == "volcengine":
+        mp3_chunks: list[bytes] = []
+        async for chunk in tts.stream_volcengine(spoken_text):
+            mp3_chunks.append(chunk)
+        await _engine.play_audio(b"".join(mp3_chunks))
+    else:
+        audio = await tts.synthesize(spoken_text, provider=TTS_PROVIDER)
+        if _engine:
+            await _engine.play_audio(audio)
+        else:
+            await _play_audio_fallback(audio)
+
+    log.info("announcement played: source=%s", source or "unknown")
+
+
+async def _drain_announcements() -> None:
+    """Drain and play all queued announcements. Called from the main loop."""
+    if _announce_queue is None:
+        return
+
+    while not _announce_queue.empty():
+        try:
+            message, source = _announce_queue.get_nowait()
+        except asyncio.QueueEmpty:
+            break
+
+        _mute()
+        try:
+            await _play_announcement(message, source)
+        except Exception:
+            log.exception("failed to play announcement")
+        finally:
+            _mute_cooldown()
+
+
 # ── Gateway lifecycle ─────────────────────────────────────────────────────────
 
 
@@ -260,8 +337,9 @@ async def start_voice_gateway(agent: Agent | None = None) -> None:
         agent: Optional Agent for voice-specific personality, session, and memory.
                If None, uses global defaults.
     """
-    global _engine, _agent
+    global _engine, _agent, _announce_queue
     _agent = agent
+    _announce_queue = asyncio.Queue()
 
     if agent:
         log.info("Voice agent: %s (workspace=%s)", agent.name, agent.workspace_dir)
@@ -310,7 +388,14 @@ async def start_voice_gateway(agent: Agent | None = None) -> None:
 
     try:
         while True:
-            frame = await audio_queue.get()
+            # Check for queued announcements between mic frames
+            await _drain_announcements()
+
+            try:
+                frame = await asyncio.wait_for(audio_queue.get(), timeout=0.5)
+            except asyncio.TimeoutError:
+                continue
+
             if _is_muted():
                 segmenter.reset()
                 continue
@@ -325,6 +410,7 @@ async def start_voice_gateway(agent: Agent | None = None) -> None:
     except asyncio.CancelledError:
         pass
     finally:
+        _announce_queue = None
         if _engine:
             _engine.stop()
             _engine = None
