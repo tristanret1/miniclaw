@@ -2,11 +2,7 @@
 
 from bot import acp
 from bot.storage import memory
-from bot.config import (
-    GOOGLE_CALENDAR_ENABLED,
-    HEALTH_TRACKING_ENABLED,
-    VOICE_ENABLED,
-)
+from bot.config import get_config
 from bot.constants import EXEC_DEFAULT_TIMEOUT
 from bot.logger import get_logger
 from bot.tools.calendar import GOOGLE_CALENDAR_TOOL, run_google_calendar
@@ -30,13 +26,14 @@ ALL_TOOLS = [
     IMESSAGE_SEND_TOOL,
 ]  # DISCORD_SEND_TOOL
 
-if VOICE_ENABLED:
+_cfg = get_config()
+if _cfg.gateway.voice.enabled:
     ALL_TOOLS.append(VOICE_ANNOUNCE_TOOL)
 
-if GOOGLE_CALENDAR_ENABLED:
+if _cfg.services.google_calendar.enabled:
     ALL_TOOLS.append(GOOGLE_CALENDAR_TOOL)
 
-if HEALTH_TRACKING_ENABLED:
+if _cfg.services.health.enabled:
     ALL_TOOLS.extend([HEALTH_LOG_TOOL, HEALTH_STATS_TOOL, HEALTH_GOAL_TOOL])
 
 

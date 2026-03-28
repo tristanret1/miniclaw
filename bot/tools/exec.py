@@ -4,7 +4,7 @@ import asyncio
 import os
 import time
 
-from bot.config import GITHUB_TOKEN
+from bot.config import get_secrets
 from bot.constants import EXEC_DEFAULT_TIMEOUT, TOOL_MAX_OUTPUT_CHARS
 from bot.logger import get_logger
 
@@ -50,9 +50,10 @@ async def run_exec(command: str, timeout: int = DEFAULT_TIMEOUT, workdir: str | 
 
     # Inject GitHub token so gh/git commands can authenticate
     env = os.environ.copy()
-    if GITHUB_TOKEN:
-        env["GH_TOKEN"] = GITHUB_TOKEN
-        env["GITHUB_TOKEN"] = GITHUB_TOKEN
+    github_token = get_secrets()["GITHUB_TOKEN"]
+    if github_token:
+        env["GH_TOKEN"] = github_token
+        env["GITHUB_TOKEN"] = github_token
 
     try:
         proc = await asyncio.create_subprocess_shell(

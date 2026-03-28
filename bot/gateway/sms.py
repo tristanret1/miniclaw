@@ -8,11 +8,7 @@ from urllib.parse import urlencode
 
 from aiohttp import web
 
-from bot.config import (
-    SMS_WEBHOOK_PORT,
-    SMS_WEBHOOK_URL,
-    TWILIO_AUTH_TOKEN,
-)
+from bot.config import get_config, get_secrets
 from bot.utils.session_keys import sms_key
 from bot.logger import get_logger
 from bot.message import build_user_content
@@ -53,10 +49,12 @@ async def handle_incoming_sms(request: web.Request) -> web.Response:
     params = {k: post[k] for k in post}
 
     # Validate signature if auth token is configured
-    if TWILIO_AUTH_TOKEN:
+    twilio_auth_token = get_secrets()["TWILIO_AUTH_TOKEN"]
+    sms_webhook_url = get_config().gateway.sms.webhook_url
+    if twilio_auth_token:
         sig = request.headers.get("X-Twilio-Signature", "")
-        url = SMS_WEBHOOK_URL or str(request.url)
-        if not validate_twilio_signature(url, params, sig, TWILIO_AUTH_TOKEN):
+        url = sms_webhook_url or str(request.url)
+        if not validate_twilio_signature(url, params, sig, twilio_auth_token):
             log.warning("sms rejected: invalid Twilio signature")
             return web.Response(status=403, text="Invalid signature")
 
@@ -104,7 +102,7 @@ async def _process_sms(from_number: str, body: str, image_urls: list[str]) -> No
 
 async def start_sms_server(port: int | None = None) -> None:
     """Start the aiohttp webhook server. Runs until cancelled."""
-    port = port or SMS_WEBHOOK_PORT
+    port = port or get_config().gateway.sms.webhook_port
 
     app = web.Application()
     app.router.add_post("/sms", handle_incoming_sms)

@@ -8,7 +8,7 @@ import json
 import sqlite3
 from datetime import datetime, timedelta
 
-from bot.config import WORKSPACE_DIR
+from bot.config import WORKSPACE_DIR  # noqa: F401 (path constant, kept)
 from bot.logger import get_logger
 
 log = get_logger("health")

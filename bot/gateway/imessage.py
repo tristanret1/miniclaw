@@ -10,12 +10,7 @@ import asyncio
 import json
 from typing import Any
 
-from bot.config import (
-    IMESSAGE_CLI_PATH,
-    IMESSAGE_DB_PATH,
-    IMESSAGE_ALLOW_FROM,
-    IMESSAGE_SERVICE,
-)
+from bot.config import get_config
 from bot.logger import get_logger
 from bot.message import build_user_content
 from bot.utils.session_keys import imessage_key
@@ -197,10 +192,11 @@ def _normalize_handle(handle: str) -> str:
 
 def _is_allowed(sender: str) -> bool:
     """Check if sender is in allowlist (empty = allow all)."""
-    if not IMESSAGE_ALLOW_FROM:
+    allow_from = get_config().gateway.imessage.allow_from
+    if not allow_from:
         return True
     normalized = _normalize_handle(sender)
-    for allowed in IMESSAGE_ALLOW_FROM:
+    for allowed in allow_from:
         if _normalize_handle(allowed) == normalized:
             return True
     return False
@@ -231,7 +227,7 @@ async def send_imessage(
     """Send an iMessage via the RPC client."""
     params: dict[str, Any] = {
         "text": message,
-        "service": service or IMESSAGE_SERVICE,
+        "service": service or get_config().gateway.imessage.service,
     }
     if chat_id:
         params["chat_id"] = chat_id
@@ -254,7 +250,8 @@ async def send_imessage(
 
 async def run_imessage_send(to: str, message: str) -> str:
     """Send an iMessage using a temporary RPC client. Used by tool dispatch."""
-    client = IMessageRpcClient(cli_path=IMESSAGE_CLI_PATH, db_path=IMESSAGE_DB_PATH)
+    _imsg_cfg = get_config().gateway.imessage
+    client = IMessageRpcClient(cli_path=_imsg_cfg.cli_path, db_path=_imsg_cfg.db_path)
     try:
         await client.start()
         return await send_imessage(client, to=to, message=message)
@@ -277,13 +274,14 @@ async def start_imessage_gateway() -> None:
     """Start the iMessage gateway. Listens for inbound messages via imsg rpc.
     Runs until cancelled."""
     import shutil
-    if not shutil.which(IMESSAGE_CLI_PATH):
-        log.warning("imsg binary not found at '%s' — iMessage gateway disabled", IMESSAGE_CLI_PATH)
+    _imsg_cfg = get_config().gateway.imessage
+    if not shutil.which(_imsg_cfg.cli_path):
+        log.warning("imsg binary not found at '%s' — iMessage gateway disabled", _imsg_cfg.cli_path)
         return
 
     global _gateway_client
 
-    client = IMessageRpcClient(cli_path=IMESSAGE_CLI_PATH, db_path=IMESSAGE_DB_PATH)
+    client = IMessageRpcClient(cli_path=_imsg_cfg.cli_path, db_path=_imsg_cfg.db_path)
     _gateway_client = client
 
     message_queue: asyncio.Queue = asyncio.Queue()
@@ -296,7 +294,7 @@ async def start_imessage_gateway() -> None:
             message_queue.put_nowait(params)
 
     await client.start(on_notification=on_notification)
-    log.info("iMessage gateway started (cli=%s)", IMESSAGE_CLI_PATH)
+    log.info("iMessage gateway started (cli=%s)", _imsg_cfg.cli_path)
 
     # Subscribe to incoming messages — imsg rpc won't push notifications without this
     sub_id = None

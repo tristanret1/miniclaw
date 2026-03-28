@@ -14,40 +14,22 @@ from bot.provider.base import BaseProvider
 # ── Environment setup (runs before any bot.* import) ─────────────────────────
 
 def pytest_configure(config):
-    """Set fake env vars before test collection triggers module imports."""
+    """Set fake env vars before test collection triggers module imports.
+
+    These env vars are used by get_secrets() at runtime. Config values
+    (previously from env vars) are now injected via the test_config fixture.
+    """
     defaults = {
+        # Secrets (consumed by get_secrets())
         "DISCORD_BOT_TOKEN": "test-token-fake",
-        "CLAUDE_MODEL": "claude-test",
-        "MAX_HISTORY": "10",
-        "TOOLS_ENABLED": "true",
         "OPENAI_API_KEY": "",
         "ACP_CWD": "/tmp/test",
         "GITHUB_TOKEN": "",
-        "AUTO_REPLY_ENABLED": "false",
-        "AUTO_REPLY_CHANNELS": "",
-        "AUTO_REPLY_CHANCE": "0.0",
-        "AUTO_REPLY_KEYWORDS": "",
         "DATABASE_URL": "",
-        "PROVIDER": "anthropic",
-        "CODEX_MODEL": "gpt-5.3-codex",
-        "SMS_ENABLED": "false",
-        "SMS_WEBHOOK_PORT": "8080",
-        "SMS_WEBHOOK_URL": "",
-        "IMESSAGE_ENABLED": "false",
-        "IMESSAGE_CLI_PATH": "imsg",
-        "IMESSAGE_DB_PATH": "",
-        "IMESSAGE_ALLOW_FROM": "",
-        "IMESSAGE_SERVICE": "auto",
-        "VOICE_ENABLED": "false",
-        "WAKE_WORDS": "testbot",
-        "TTS_PROVIDER": "openai",
-        "TTS_VOICE": "alloy",
-        "TTS_MODEL": "gpt-4o-mini-tts",
-        "STT_MODEL": "whisper-1",
-        "VOICE_SILENCE_THRESHOLD": "500",
-        "VOICE_SILENCE_DURATION": "1.5",
-        "VOICE_SAMPLE_RATE": "16000",
-        "GOOGLE_CALENDAR_ENABLED": "false",
+        "TWILIO_ACCOUNT_SID": "",
+        "TWILIO_AUTH_TOKEN": "",
+        "TWILIO_FROM_NUMBER": "",
+        "VOLCENGINE_TTS_API_KEY": "",
         "GOOGLE_CALENDAR_CLIENT_ID": "",
         "GOOGLE_CALENDAR_CLIENT_SECRET": "",
         "GOOGLE_CALENDAR_LIFE_ID": "test-life@gmail.com",
@@ -55,6 +37,74 @@ def pytest_configure(config):
     }
     for key, val in defaults.items():
         os.environ.setdefault(key, val)
+
+
+# ── Test AppConfig injection ──────────────────────────────────────────────────
+
+@pytest.fixture(autouse=True)
+def test_config():
+    """Inject a test-appropriate AppConfig before each test, reset after."""
+    from bot.config import reset_config
+    from bot.config_schema import AppConfig
+
+    # Build a test config with values matching what tests expect
+    cfg = AppConfig.from_dict({
+        "llm": {
+            "provider": "anthropic",
+            "anthropic": {"model": "claude-test"},
+            "codex": {"model": "gpt-5.3-codex"},
+            "max_history": 10,
+            "tools_enabled": True,
+        },
+        "discord": {
+            "auto_reply": {
+                "enabled": False,
+                "channels": [],
+                "chance": 0.0,
+                "keywords": [],
+            },
+            "allowed_dm_users": [],
+        },
+        "gateway": {
+            "voice": {
+                "enabled": False,
+                "wake_words": ["testbot"],
+                "tts_provider": "openai",
+                "tts_voice": "alloy",
+                "tts_model": "gpt-4o-mini-tts",
+                "tts_speed": 1.0,
+                "stt_model": "whisper-1",
+                "stt_language": "zh",
+                "stt_prompt": "",
+                "silence_threshold": 500,
+                "silence_duration": 1.5,
+                "sample_rate": 16000,
+            },
+            "sms": {"enabled": False, "webhook_port": 8080, "webhook_url": ""},
+            "imessage": {
+                "enabled": False,
+                "cli_path": "imsg",
+                "db_path": "",
+                "allow_from": [],
+                "service": "auto",
+            },
+            "heartbeat": {"enabled": False},
+        },
+        "services": {
+            "google_calendar": {
+                "enabled": False,
+                "life_calendar_id": "test-life@gmail.com",
+                "work_calendar_id": "test-work@gmail.com",
+            },
+            "cron": {"enabled": True, "timezone": "America/Vancouver", "max_concurrent": 5},
+            "health": {"enabled": True},
+        },
+    })
+
+    import bot.config as cfg_mod
+    cfg_mod._config = cfg
+    yield cfg
+    reset_config()
 
 
 # ── SQLite fixtures ──────────────────────────────────────────────────────────

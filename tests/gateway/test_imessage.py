@@ -95,23 +95,23 @@ class TestNormalizeHandle:
 # ── Allowlist ───────────────────────────────────────────────────────────────
 
 class TestIsAllowed:
-    @patch("bot.gateway.imessage.IMESSAGE_ALLOW_FROM", [])
-    def test_empty_allowlist_allows_all(self):
+    def test_empty_allowlist_allows_all(self, test_config):
+        test_config.gateway.imessage.allow_from = []
         from bot.gateway.imessage import _is_allowed
         assert _is_allowed("+14155551234") is True
 
-    @patch("bot.gateway.imessage.IMESSAGE_ALLOW_FROM", ["+14155551234", "friend@icloud.com"])
-    def test_allowed_phone(self):
+    def test_allowed_phone(self, test_config):
+        test_config.gateway.imessage.allow_from = ["+14155551234", "friend@icloud.com"]
         from bot.gateway.imessage import _is_allowed
         assert _is_allowed("+14155551234") is True
 
-    @patch("bot.gateway.imessage.IMESSAGE_ALLOW_FROM", ["+14155551234"])
-    def test_blocked_phone(self):
+    def test_blocked_phone(self, test_config):
+        test_config.gateway.imessage.allow_from = ["+14155551234"]
         from bot.gateway.imessage import _is_allowed
         assert _is_allowed("+19876543210") is False
 
-    @patch("bot.gateway.imessage.IMESSAGE_ALLOW_FROM", ["user@icloud.com"])
-    def test_case_insensitive(self):
+    def test_case_insensitive(self, test_config):
+        test_config.gateway.imessage.allow_from = ["user@icloud.com"]
         from bot.gateway.imessage import _is_allowed
         assert _is_allowed("User@iCloud.com") is True
 

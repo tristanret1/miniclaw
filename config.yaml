@@ -12,7 +12,7 @@ llm:
 
 discord:
   greeting_channel_id: "1482258781860532344"
-  allowed_dm_users: []
+  allowed_dm_users: [769868293476843520]
   auto_reply:
     enabled: false
     channels: []

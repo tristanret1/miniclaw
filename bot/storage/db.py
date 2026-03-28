@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import ssl
 
-from bot.config import DATABASE_URL
+from bot.config import get_secrets
 from bot.logger import get_logger
 
 log = get_logger("db")
@@ -18,7 +18,7 @@ _CONNECT_RETRY_DELAY = 2.0  # seconds
 
 def use_postgres() -> bool:
     """Return True if PostgreSQL backend is configured."""
-    return bool(DATABASE_URL)
+    return bool(get_secrets()["DATABASE_URL"])
 
 
 async def get_pool():
@@ -28,7 +28,8 @@ async def get_pool():
     Returns None if DATABASE_URL is not set.
     """
     global _pool
-    if not DATABASE_URL:
+    database_url = get_secrets()["DATABASE_URL"]
+    if not database_url:
         return None
     if _pool is not None:
         return _pool
@@ -47,14 +48,14 @@ async def get_pool():
     for attempt in range(1, _CONNECT_RETRIES + 1):
         try:
             # First ensure pgvector extension exists (before pool init tries to register the type)
-            conn = await asyncpg.connect(DATABASE_URL, ssl=ssl_ctx)
+            conn = await asyncpg.connect(database_url, ssl=ssl_ctx)
             try:
                 await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
             finally:
                 await conn.close()
 
             _pool = await asyncpg.create_pool(
-                DATABASE_URL,
+                database_url,
                 min_size=1,
                 max_size=5,
                 ssl=ssl_ctx,

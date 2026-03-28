@@ -2,14 +2,15 @@
 import httpx
 
 from bot.constants import TWILIO_API_BASE
-from bot.config import TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
+from bot.config import get_secrets
 
 
 class TwilioClient:
     def __init__(self, account_sid="", auth_token="", from_number=""):
-        self._sid = account_sid or TWILIO_ACCOUNT_SID
-        self._token = auth_token or TWILIO_AUTH_TOKEN
-        self._from = from_number or TWILIO_FROM_NUMBER
+        _secrets = get_secrets()
+        self._sid = account_sid or _secrets["TWILIO_ACCOUNT_SID"]
+        self._token = auth_token or _secrets["TWILIO_AUTH_TOKEN"]
+        self._from = from_number or _secrets["TWILIO_FROM_NUMBER"]
 
     def is_configured(self) -> bool:
         return bool(self._sid and self._token and self._from)

@@ -5,11 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from bot.config import (
-    CRON_TIMEZONE,
-    GOOGLE_CALENDAR_LIFE_ID,
-    GOOGLE_CALENDAR_WORK_ID,
-)
+from bot.config import get_config, get_secrets
 from bot.logger import get_logger
 
 log = get_logger("google_calendar")
@@ -67,10 +63,11 @@ def _parse_event(event: dict, source_calendar: str) -> dict:
 
 def _get_calendar_id(calendar: str) -> str:
     """Resolve calendar name to Google Calendar ID."""
+    gcal = get_config().services.google_calendar
     if calendar == "life":
-        return GOOGLE_CALENDAR_LIFE_ID
+        return gcal.life_calendar_id
     if calendar == "work":
-        return GOOGLE_CALENDAR_WORK_ID
+        return gcal.work_calendar_id
     raise ValueError(f"Unknown calendar: {calendar}")
 
 
@@ -87,7 +84,7 @@ def _fetch_events(
                 timeMax=time_max,
                 singleEvents=True,
                 orderBy="startTime",
-                timeZone=CRON_TIMEZONE,
+                timeZone=get_config().services.cron.timezone,
             )
             .execute()
         )
@@ -104,7 +101,9 @@ def list_events(
 ) -> list[dict]:
     """List events from Life, Work, or both calendars, merged and sorted."""
     # Default to today if no range specified
-    tz = ZoneInfo(CRON_TIMEZONE)
+    _gcal_cfg = get_config().services.google_calendar
+    _cron_tz = get_config().services.cron.timezone
+    tz = ZoneInfo(_cron_tz)
     now = datetime.now(tz)
     if not date_start:
         date_start = now.replace(hour=0, minute=0, second=0).isoformat()
@@ -118,17 +117,17 @@ def list_events(
     events: list[dict] = []
 
     if calendar in ("life", "both"):
-        if GOOGLE_CALENDAR_LIFE_ID:
+        if _gcal_cfg.life_calendar_id:
             service = _build_service(account="life")
             events.extend(
-                _fetch_events(service, GOOGLE_CALENDAR_LIFE_ID, "Life", date_start, date_end)
+                _fetch_events(service, _gcal_cfg.life_calendar_id, "Life", date_start, date_end)
             )
 
     if calendar in ("work", "both"):
-        if GOOGLE_CALENDAR_WORK_ID:
+        if _gcal_cfg.work_calendar_id:
             service = _build_service(account="work")
             events.extend(
-                _fetch_events(service, GOOGLE_CALENDAR_WORK_ID, "Work", date_start, date_end)
+                _fetch_events(service, _gcal_cfg.work_calendar_id, "Work", date_start, date_end)
             )
 
     # Sort by start time
@@ -142,7 +141,7 @@ def format_events(events: list[dict]) -> str:
         return "No events found for this period."
 
     lines: list[str] = []
-    tz = ZoneInfo(CRON_TIMEZONE)
+    tz = ZoneInfo(get_config().services.cron.timezone)
 
     for ev in events:
         cal_label = f"[{ev['source_calendar']}]"
@@ -178,11 +177,13 @@ def create_event(
     attendees: list[str] | None = None,
 ) -> dict:
     """Create an event on the Life calendar. Returns created event dict."""
-    if not GOOGLE_CALENDAR_LIFE_ID:
-        raise RuntimeError("Life calendar not configured (GOOGLE_CALENDAR_LIFE_ID)")
+    _gcal_cfg = get_config().services.google_calendar
+    _cron_tz = get_config().services.cron.timezone
+    if not _gcal_cfg.life_calendar_id:
+        raise RuntimeError("Life calendar not configured (life_calendar_id)")
 
     service = _build_service(account="life")
-    tz = ZoneInfo(CRON_TIMEZONE)
+    tz = ZoneInfo(_cron_tz)
 
     # Parse start time
     start_dt = datetime.fromisoformat(start_time)
@@ -199,8 +200,8 @@ def create_event(
 
     event_body = {
         "summary": title,
-        "start": {"dateTime": start_dt.isoformat(), "timeZone": CRON_TIMEZONE},
-        "end": {"dateTime": end_dt.isoformat(), "timeZone": CRON_TIMEZONE},
+        "start": {"dateTime": start_dt.isoformat(), "timeZone": _cron_tz},
+        "end": {"dateTime": end_dt.isoformat(), "timeZone": _cron_tz},
     }
     if description:
         event_body["description"] = description
@@ -211,7 +212,7 @@ def create_event(
 
     result = (
         service.events()
-        .insert(calendarId=GOOGLE_CALENDAR_LIFE_ID, body=event_body)
+        .insert(calendarId=_gcal_cfg.life_calendar_id, body=event_body)
         .execute()
     )
 
@@ -222,11 +223,13 @@ def create_event(
 
 def update_event(event_id: str, updates: dict) -> dict:
     """Update a Life calendar event. Returns updated event dict."""
-    if not GOOGLE_CALENDAR_LIFE_ID:
-        raise RuntimeError("Life calendar not configured (GOOGLE_CALENDAR_LIFE_ID)")
+    _gcal_cfg = get_config().services.google_calendar
+    _cron_tz = get_config().services.cron.timezone
+    if not _gcal_cfg.life_calendar_id:
+        raise RuntimeError("Life calendar not configured (life_calendar_id)")
 
     service = _build_service(account="life")
-    tz = ZoneInfo(CRON_TIMEZONE)
+    tz = ZoneInfo(_cron_tz)
 
     patch_body: dict = {}
     if "title" in updates:
@@ -239,18 +242,18 @@ def update_event(event_id: str, updates: dict) -> dict:
         start_dt = datetime.fromisoformat(updates["start_time"])
         if start_dt.tzinfo is None:
             start_dt = start_dt.replace(tzinfo=tz)
-        patch_body["start"] = {"dateTime": start_dt.isoformat(), "timeZone": CRON_TIMEZONE}
+        patch_body["start"] = {"dateTime": start_dt.isoformat(), "timeZone": _cron_tz}
     if "end_time" in updates:
         end_dt = datetime.fromisoformat(updates["end_time"])
         if end_dt.tzinfo is None:
             end_dt = end_dt.replace(tzinfo=tz)
-        patch_body["end"] = {"dateTime": end_dt.isoformat(), "timeZone": CRON_TIMEZONE}
+        patch_body["end"] = {"dateTime": end_dt.isoformat(), "timeZone": _cron_tz}
     if "attendees" in updates:
         patch_body["attendees"] = [{"email": e} for e in updates["attendees"]]
 
     result = (
         service.events()
-        .patch(calendarId=GOOGLE_CALENDAR_LIFE_ID, eventId=event_id, body=patch_body)
+        .patch(calendarId=_gcal_cfg.life_calendar_id, eventId=event_id, body=patch_body)
         .execute()
     )
 
@@ -261,12 +264,13 @@ def update_event(event_id: str, updates: dict) -> dict:
 
 async def delete_event(event_id: str) -> str:
     """Delete a Life calendar event. Returns confirmation string."""
-    if not GOOGLE_CALENDAR_LIFE_ID:
-        raise RuntimeError("Life calendar not configured (GOOGLE_CALENDAR_LIFE_ID)")
+    life_id = get_config().services.google_calendar.life_calendar_id
+    if not life_id:
+        raise RuntimeError("Life calendar not configured (life_calendar_id)")
 
     service = _build_service(account="life")
     service.events().delete(
-        calendarId=GOOGLE_CALENDAR_LIFE_ID, eventId=event_id
+        calendarId=life_id, eventId=event_id
     ).execute()
 
     # Clean up any associated reminder cron job
@@ -291,7 +295,8 @@ async def _schedule_urgent_reminder(
     """Schedule a one-shot cron job as an urgent event reminder."""
     from bot import cron
 
-    tz = ZoneInfo(CRON_TIMEZONE)
+    _cron_tz = get_config().services.cron.timezone
+    tz = ZoneInfo(_cron_tz)
     start_dt = datetime.fromisoformat(event_start)
     if start_dt.tzinfo is None:
         start_dt = start_dt.replace(tzinfo=tz)
@@ -316,7 +321,7 @@ async def _schedule_urgent_reminder(
         schedule_value=fire_at.isoformat(),
         payload=payload,
         channel_id=channel_id,
-        timezone=CRON_TIMEZONE,
+        timezone=_cron_tz,
         session_mode="isolated",
         context=context,
     )

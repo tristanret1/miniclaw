@@ -12,7 +12,7 @@ from pathlib import Path
 
 import httpx
 
-from bot.config import OPENAI_API_KEY, WORKSPACE_DIR
+from bot.config import get_secrets, WORKSPACE_DIR
 from bot.constants import (
     BM25_WEIGHT,
     EMBEDDING_MODEL,
@@ -91,19 +91,20 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
 # ── Embedding helpers ─────────────────────────────────────────────────────────
 
 def _has_embeddings() -> bool:
-    return bool(OPENAI_API_KEY)
+    return bool(get_secrets()["OPENAI_API_KEY"])
 
 
 def _get_embedding(text: str) -> list[float] | None:
     """Get embedding from OpenAI API. Returns None on failure."""
-    if not OPENAI_API_KEY:
+    openai_api_key = get_secrets()["OPENAI_API_KEY"]
+    if not openai_api_key:
         return None
 
     try:
         resp = httpx.post(
             OPENAI_EMBEDDINGS_URL,
             json={"input": text, "model": EMBEDDING_MODEL},
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+            headers={"Authorization": f"Bearer {openai_api_key}"},
             timeout=30,
         )
         if resp.status_code != 200:

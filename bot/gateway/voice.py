@@ -14,12 +14,7 @@ import time
 from typing import TYPE_CHECKING
 
 from bot import llm, stt, tts, wake
-from bot.config import (
-    TTS_PROVIDER,
-    VOICE_SAMPLE_RATE,
-    VOICE_SILENCE_DURATION,
-    VOICE_SILENCE_THRESHOLD,
-)
+from bot.config import get_config
 from bot.logger import get_logger
 from bot.message import build_user_content
 from bot.utils.session_keys import voice_key
@@ -115,10 +110,11 @@ class VoiceGateway:
         self._announce_queue: asyncio.Queue[tuple[str, str]] | None = None
 
         # Config (read once at init)
-        self._tts_provider = TTS_PROVIDER
-        self._sample_rate = VOICE_SAMPLE_RATE
-        self._silence_duration = VOICE_SILENCE_DURATION
-        self._silence_threshold = VOICE_SILENCE_THRESHOLD
+        _voice_cfg = get_config().gateway.voice
+        self._tts_provider = _voice_cfg.tts_provider
+        self._sample_rate = _voice_cfg.sample_rate
+        self._silence_duration = _voice_cfg.silence_duration
+        self._silence_threshold = _voice_cfg.silence_threshold
 
     # ── Mute helpers ──────────────────────────────────────────────────────────
 

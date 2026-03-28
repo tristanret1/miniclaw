@@ -183,8 +183,8 @@ def is_within_active_hours(
 
 def _get_today_calendar() -> str | None:
     """Fetch today's calendar events. Returns None if calendar not enabled."""
-    from bot.config import GOOGLE_CALENDAR_ENABLED
-    if not GOOGLE_CALENDAR_ENABLED:
+    from bot.config import get_config
+    if not get_config().services.google_calendar.enabled:
         return None
     try:
         from bot.services import google_calendar as gcal

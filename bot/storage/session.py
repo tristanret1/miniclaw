@@ -4,7 +4,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from bot.config import MAX_HISTORY, PROVIDER, WORKSPACE_DIR
+from bot.config import get_config, WORKSPACE_DIR
 from bot.storage.db import use_postgres
 from bot.logger import get_logger
 from bot.message import Content, Message
@@ -158,8 +158,9 @@ class SessionManager:
     async def get_history(self, session_key: str) -> list[Message]:
         """Get session history, loading from DB on first access."""
         if session_key not in self._cache:
-            raw = await _load_from_db(session_key, MAX_HISTORY * 2, self._db_path)
-            sanitized = sanitize(raw, PROVIDER)
+            cfg = get_config()
+            raw = await _load_from_db(session_key, cfg.llm.max_history * 2, self._db_path)
+            sanitized = sanitize(raw, cfg.llm.provider)
             if len(raw) != len(sanitized):
                 log.warning(
                     "sanitized session %s: %d -> %d messages",
@@ -178,11 +179,13 @@ class SessionManager:
         """Trim history if it exceeds the max limit."""
         history = await self.get_history(session_key)
         before = len(history)
-        if before > MAX_HISTORY * 2:
-            history[:] = sanitize(history[-(MAX_HISTORY * 2):], PROVIDER)
+        cfg = get_config()
+        limit = cfg.llm.max_history * 2
+        if before > limit:
+            history[:] = sanitize(history[-limit:], cfg.llm.provider)
             log.warning(
                 "trimmed session %s: %d -> %d messages (limit %d)",
-                session_key, before, len(history), MAX_HISTORY * 2,
+                session_key, before, len(history), limit,
             )
 
     async def clear(self, session_key: str) -> int:

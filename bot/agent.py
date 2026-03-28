@@ -48,16 +48,19 @@ class Agent:
         """Return per-agent model or fall back to global config."""
         if self.model:
             return self.model
-        from bot.config import CLAUDE_MODEL
-        return CLAUDE_MODEL
+        from bot.config import get_config
+        cfg = get_config()
+        if cfg.llm.provider == "codex":
+            return cfg.llm.codex.model
+        return cfg.llm.anthropic.model
 
     @property
     def effective_provider(self) -> str:
         """Return per-agent provider or fall back to global config."""
         if self.provider:
             return self.provider
-        from bot.config import PROVIDER
-        return PROVIDER
+        from bot.config import get_config
+        return get_config().llm.provider
 
 
 def _load_from_json() -> list[Agent] | None:
@@ -107,17 +110,16 @@ def _load_from_json() -> list[Agent] | None:
 
 def _load_from_env() -> list[Agent]:
     """Load agents from env vars (legacy). Falls back to single-agent mode."""
-    from bot.config import DISCORD_BOT_TOKEN, WORKSPACE_DIR
+    from bot.config import get_secrets, WORKSPACE_DIR, get_system_prompt
 
     agents_str = os.getenv("AGENTS", "").strip()
     if not agents_str:
         # Single-agent backward compatibility
-        from bot.config import SYSTEM_PROMPT
         return [Agent(
             name="default",
-            discord_token=DISCORD_BOT_TOKEN,
+            discord_token=get_secrets()["DISCORD_BOT_TOKEN"],
             workspace_dir=WORKSPACE_DIR,
-            system_prompt=SYSTEM_PROMPT,
+            system_prompt=get_system_prompt(),
         )]
 
     agents = []

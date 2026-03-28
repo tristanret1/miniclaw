@@ -13,9 +13,8 @@ from zoneinfo import ZoneInfo
 from croniter import croniter
 
 from bot.config import (
-    CRON_MAX_CONCURRENT,
-    CRON_TIMEZONE,
-    SYSTEM_PROMPT,
+    get_config,
+    get_system_prompt,
     WORKSPACE_DIR,
 )
 from bot.utils.discord import send_chunks
@@ -228,7 +227,7 @@ async def create_job(
     delivery_channel: str = "discord",
 ) -> str:
     """Create a new cron job. Returns confirmation string."""
-    tz = timezone or CRON_TIMEZONE
+    tz = timezone or get_config().services.cron.timezone
     if schedule_type not in ("every", "cron", "at"):
         return f"Error: invalid schedule_type '{schedule_type}'. Must be 'every', 'cron', or 'at'."
 
@@ -374,7 +373,7 @@ class CronScheduler:
         """Start the scheduler. Call from on_ready()."""
         self._bot = bot
         self._running = True
-        self._sem = asyncio.Semaphore(CRON_MAX_CONCURRENT)
+        self._sem = asyncio.Semaphore(get_config().services.cron.max_concurrent)
 
         if use_postgres():
             from bot.storage.db import get_pool
@@ -505,7 +504,7 @@ class CronScheduler:
             log.info("executing job: %s (%s) mode=%s", job.name, job.id, job.session_mode)
 
             # Build per-job system prompt
-            system_prompt = SYSTEM_PROMPT
+            system_prompt = get_system_prompt()
             task_header = f"\n\n---\n\n[Scheduled Task: {job.name}]"
             if job.context:
                 system_prompt += task_header + "\n" + job.context

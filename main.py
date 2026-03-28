@@ -28,7 +28,7 @@ if not env_path.exists() or not creds_path.exists():
     print()
 
 import asyncio
-from bot.config import SMS_ENABLED, IMESSAGE_ENABLED, VOICE_ENABLED
+from bot.config import get_config
 from bot.agent import load_agents
 from bot.client import create_bot
 from bot.storage.session import SessionManager
@@ -68,15 +68,16 @@ async def main():
             bot = create_bot(agent)
             tasks.append(bot.start(agent.discord_token))
 
-        if SMS_ENABLED:
+        _gw_cfg = get_config().gateway
+        if _gw_cfg.sms.enabled:
             from bot.gateway.sms import start_sms_server
             tasks.append(start_sms_server())
 
-        if IMESSAGE_ENABLED:
+        if _gw_cfg.imessage.enabled:
             from bot.gateway.imessage import start_imessage_gateway
             tasks.append(start_imessage_gateway())
 
-        if VOICE_ENABLED:
+        if _gw_cfg.voice.enabled:
             from bot.gateway.voice import start_voice_gateway
             tasks.append(start_voice_gateway(agent=voice_agent))
 

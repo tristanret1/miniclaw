@@ -2,11 +2,7 @@
 
 import httpx
 
-from bot.config import (
-    TWILIO_ACCOUNT_SID,
-    TWILIO_AUTH_TOKEN,
-    TWILIO_FROM_NUMBER,
-)
+from bot.config import get_secrets
 from bot.constants import TWILIO_API_BASE
 from bot.logger import get_logger
 
@@ -64,15 +60,19 @@ PHONE_CALL_TOOL = {
 
 async def run_sms(to: str, message: str) -> str:
     """Send an SMS via Twilio REST API."""
-    if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER]):
+    secrets = get_secrets()
+    twilio_account_sid = secrets["TWILIO_ACCOUNT_SID"]
+    twilio_auth_token = secrets["TWILIO_AUTH_TOKEN"]
+    twilio_from_number = secrets["TWILIO_FROM_NUMBER"]
+    if not all([twilio_account_sid, twilio_auth_token, twilio_from_number]):
         return "Error: Twilio credentials not configured (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER)"
 
     log.info("sms → to=%s len=%d", to, len(message))
 
-    url = f"{TWILIO_API_BASE}/{TWILIO_ACCOUNT_SID}/Messages.json"
+    url = f"{TWILIO_API_BASE}/{twilio_account_sid}/Messages.json"
     payload = {
         "To": to,
-        "From": TWILIO_FROM_NUMBER,
+        "From": twilio_from_number,
         "Body": message[:1600],
     }
 
@@ -81,7 +81,7 @@ async def run_sms(to: str, message: str) -> str:
             resp = await client.post(
                 url,
                 data=payload,
-                auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
+                auth=(twilio_account_sid, twilio_auth_token),
                 timeout=30,
             )
 
@@ -101,7 +101,11 @@ async def run_sms(to: str, message: str) -> str:
 
 async def run_phone_call(to: str, message: str, language: str = "zh-CN") -> str:
     """Make a TTS phone call via Twilio REST API."""
-    if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER]):
+    secrets = get_secrets()
+    twilio_account_sid = secrets["TWILIO_ACCOUNT_SID"]
+    twilio_auth_token = secrets["TWILIO_AUTH_TOKEN"]
+    twilio_from_number = secrets["TWILIO_FROM_NUMBER"]
+    if not all([twilio_account_sid, twilio_auth_token, twilio_from_number]):
         return "Error: Twilio credentials not configured (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER)"
 
     log.info("phone_call → to=%s lang=%s len=%d", to, language, len(message))
@@ -114,10 +118,10 @@ async def run_phone_call(to: str, message: str, language: str = "zh-CN") -> str:
         "</Response>"
     )
 
-    url = f"{TWILIO_API_BASE}/{TWILIO_ACCOUNT_SID}/Calls.json"
+    url = f"{TWILIO_API_BASE}/{twilio_account_sid}/Calls.json"
     payload = {
         "To": to,
-        "From": TWILIO_FROM_NUMBER,
+        "From": twilio_from_number,
         "Twiml": twiml,
     }
 
@@ -126,7 +130,7 @@ async def run_phone_call(to: str, message: str, language: str = "zh-CN") -> str:
             resp = await client.post(
                 url,
                 data=payload,
-                auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
+                auth=(twilio_account_sid, twilio_auth_token),
                 timeout=30,
             )
 

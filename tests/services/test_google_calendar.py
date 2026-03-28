@@ -351,22 +351,34 @@ _google_env_keys = (
 @pytest.fixture(autouse=True, scope="class")
 def _real_google_env():
     """Swap in real Google env vars for integration tests, restore after."""
-    import importlib
-    import bot.config as cfg
-    import bot.services.google_calendar as gcal
+    from bot.config import reset_config
+    from bot.config_schema import AppConfig
+    import bot.config as cfg_mod
 
     saved = {k: os.environ.get(k) for k in _google_env_keys}
     _load_real_env()
-    importlib.reload(cfg)
-    importlib.reload(gcal)
+
+    # Inject real calendar IDs into AppConfig
+    life_id = os.environ.get("GOOGLE_CALENDAR_LIFE_ID", "")
+    work_id = os.environ.get("GOOGLE_CALENDAR_WORK_ID", "")
+    real_cfg = AppConfig.from_dict({
+        "services": {
+            "google_calendar": {
+                "enabled": True,
+                "life_calendar_id": life_id,
+                "work_calendar_id": work_id,
+            },
+            "cron": {"timezone": "America/Vancouver"},
+        },
+    })
+    cfg_mod._config = real_cfg
     yield
     for k, v in saved.items():
         if v is None:
             os.environ.pop(k, None)
         else:
             os.environ[k] = v
-    importlib.reload(cfg)
-    importlib.reload(gcal)
+    reset_config()
 
 
 @pytest.mark.integration
@@ -389,8 +401,8 @@ class TestGoogleCalendarIntegration:
     def test_list_events_today(self, caplog):
         """List today's events from life calendar."""
         import logging
-        from bot.config import CRON_TIMEZONE
-        tz = ZoneInfo(CRON_TIMEZONE)
+        from bot.config import get_config
+        tz = ZoneInfo(get_config().services.cron.timezone)
         now = datetime.now(tz)
         start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
         end = (now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).isoformat()
@@ -409,8 +421,8 @@ class TestGoogleCalendarIntegration:
     async def test_crud_lifecycle(self, caplog):
         """Create → read → update → delete a test event."""
         import logging
-        from bot.config import CRON_TIMEZONE
-        tz = ZoneInfo(CRON_TIMEZONE)
+        from bot.config import get_config
+        tz = ZoneInfo(get_config().services.cron.timezone)
         tomorrow = datetime.now(tz).replace(
             hour=23, minute=0, second=0, microsecond=0
         ) + timedelta(days=1)
@@ -453,12 +465,14 @@ class TestGoogleCalendarIntegration:
     def test_list_both_calendars(self, caplog):
         """List from both calendars if work calendar is accessible."""
         import logging
-        from bot.config import GOOGLE_CALENDAR_WORK_ID, CRON_TIMEZONE
+        from bot.config import get_config
+        _cfg = get_config()
+        work_id = _cfg.services.google_calendar.work_calendar_id
 
-        if not GOOGLE_CALENDAR_WORK_ID or "test-" in GOOGLE_CALENDAR_WORK_ID:
+        if not work_id or "test-" in work_id:
             pytest.skip("Real GOOGLE_CALENDAR_WORK_ID not configured")
 
-        tz = ZoneInfo(CRON_TIMEZONE)
+        tz = ZoneInfo(_cfg.services.cron.timezone)
         now = datetime.now(tz)
         start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
         end = (now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).isoformat()

@@ -18,7 +18,7 @@ from AVFoundation import AVAudioEngine, AVAudioFile, AVAudioPlayerNode
 from AVFAudio import AVAudioFormat, AVAudioPCMBuffer
 from Foundation import NSURL
 
-from bot.config import VOICE_SAMPLE_RATE
+from bot.config import get_config
 from bot.logger import get_logger
 
 log = get_logger("audio_engine")
@@ -35,7 +35,7 @@ class AudioEngine:
     """
 
     def __init__(self, sample_rate: int | None = None):
-        self._target_rate = sample_rate or VOICE_SAMPLE_RATE
+        self._target_rate = sample_rate or get_config().gateway.voice.sample_rate
         self._engine: AVAudioEngine | None = None
         self._player: AVAudioPlayerNode | None = None
         self._pcm_format: AVAudioFormat | None = None

@@ -5,7 +5,7 @@ import json
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 
-from bot.config import PROVIDER, SYSTEM_PROMPT, TOOLS_ENABLED
+from bot.config import get_config, get_system_prompt
 from bot.constants import MAX_TOOL_ROUNDS
 from bot.logger import get_logger
 from bot.storage.memory import get_flush_prompt
@@ -26,7 +26,7 @@ class StreamProcessor:
         self.provider = provider
         self.session = session
         self.session_key = session_key
-        self._system_prompt = self._build_system_prompt(system_prompt or SYSTEM_PROMPT)
+        self._system_prompt = self._build_system_prompt(system_prompt or get_system_prompt())
         self._memory_dir = memory_dir
         self._agent_name = agent_name
 
@@ -51,7 +51,7 @@ class StreamProcessor:
             asyncio.create_task(self._run_flush(history_copy))
 
         history = await self.session.get_history(self.session_key)
-        tools = ALL_TOOLS if TOOLS_ENABLED else None
+        tools = ALL_TOOLS if get_config().llm.tools_enabled else None
 
         for round_num in range(1, MAX_TOOL_ROUNDS + 1):
             collected_text: list[str] = []
@@ -117,7 +117,7 @@ class StreamProcessor:
                 elif "tool_use" in str(e) or "tool_result" in str(e) or "400" in str(e):
                     old_len = len(history)
              
-                    sanitized = sanitize(history, PROVIDER)
+                    sanitized = sanitize(history, get_config().llm.provider)
                     if len(sanitized) == old_len:
                         # sanitize didn't help — aggressively strip all tool blocks
                         history[:] = strip_tool_blocks(history)
@@ -189,10 +189,10 @@ class StreamProcessor:
 
     async def _run_flush(self, history: list[dict]) -> None:
         """Background auto-flush: save conversation highlights to memory."""
-        flush_history = sanitize(history, PROVIDER) + [
+        flush_history = sanitize(history, get_config().llm.provider) + [
             {"role": "user", "content": get_flush_prompt()}
         ]
-        tools = ALL_TOOLS if TOOLS_ENABLED else None
+        tools = ALL_TOOLS if get_config().llm.tools_enabled else None
 
         try:
             for _ in range(5):
@@ -202,7 +202,7 @@ class StreamProcessor:
                     )
                 except RuntimeError as e:
                     if "400" in str(e) or "tool_use" in str(e) or "tool_result" in str(e):
-                        flush_history = sanitize(flush_history, PROVIDER)
+                        flush_history = sanitize(flush_history, get_config().llm.provider)
                         log.warning("flush: sanitized history after 400, retrying")
                         response = await self.provider.call(
                             flush_history, self._system_prompt, tools=tools
