@@ -1,6 +1,7 @@
 """discord_send tool — send messages to Discord channels."""
 
 from bot.logger import get_logger
+from bot.utils.discord import send_chunks
 
 log = get_logger("tools")
 
@@ -48,12 +49,10 @@ async def run_discord_send(channel_id: str, message: str, ephemeral: bool = Fals
         return f"Error: could not find channel {channel_id} – {e}"
 
     try:
-        # Truncate message to Discord's 2000 char limit per message
-        chunks = [message[i : i + 2000] for i in range(0, len(message), 2000)]
-        for chunk in chunks:
-            await channel.send(chunk)
-        log.info("discord_send ✓ sent %d chunk(s) to channel %s", len(chunks), channel_id)
-        return f"Message sent to channel {channel_id} ({len(chunks)} part(s))."
+        num_chunks = (len(message) + 1999) // 2000
+        await send_chunks(channel, message)
+        log.info("discord_send ✓ sent %d chunk(s) to channel %s", num_chunks, channel_id)
+        return f"Message sent to channel {channel_id} ({num_chunks} part(s))."
     except Exception as e:
         log.error("discord_send ✗ failed to send to channel %s: %s", channel_id, e)
         return f"Error sending message: {e}"

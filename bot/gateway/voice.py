@@ -22,13 +22,14 @@ from bot.config import (
 )
 from bot.logger import get_logger
 from bot.message import build_user_content
+from bot.utils.session_keys import voice_key
 
 if TYPE_CHECKING:
     from bot.agent import Agent
 
 log = get_logger("voice")
 
-SESSION_KEY = "voice:local"
+SESSION_KEY = voice_key()
 
 # Suppresses mic input during processing + cooldown (safety net on top of AEC).
 _muted_until: float = 0.0

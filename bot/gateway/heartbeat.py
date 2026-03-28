@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 
 from bot.constants import HEARTBEAT_TOKEN
 from bot.logger import get_logger
+from bot.utils.session_keys import heartbeat_key
 
 log = get_logger("heartbeat")
 
@@ -282,10 +283,7 @@ class HeartbeatRunner:
         prompt = "".join(context_parts)
 
         # Session key: use channel_id to share memory with the channel
-        if self._isolated:
-            session_key = f"{self._channel_id}:heartbeat:{int(time.time())}"
-        else:
-            session_key = f"{self._channel_id}:heartbeat"
+        session_key = heartbeat_key(self._channel_id, isolated=self._isolated)
 
         # Call LLM
         try:

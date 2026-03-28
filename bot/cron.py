@@ -18,6 +18,8 @@ from bot.config import (
     SYSTEM_PROMPT,
     WORKSPACE_DIR,
 )
+from bot.utils.discord import send_chunks
+from bot.utils.session_keys import cron_key
 from bot.storage.db import use_postgres
 from bot.logger import get_logger
 
@@ -512,9 +514,9 @@ class CronScheduler:
 
             # Use session key for persistent mode, or isolated
             if job.session_mode == "persistent":
-                session_key = f"cron:{job.id}"
+                session_key = cron_key(job.id)
             else:
-                session_key = f"cron:{job.id}:{int(time.time())}"
+                session_key = cron_key(job.id, isolated=True)
 
             # Use the unified LLM entry point
             from bot import llm
@@ -547,8 +549,7 @@ class CronScheduler:
                         channel = self._bot.get_channel(int(job.channel_id))
                         if channel is None:
                             channel = await self._bot.fetch_channel(int(job.channel_id))
-                        for i in range(0, len(reply), 2000):
-                            await channel.send(reply[i : i + 2000])
+                        await send_chunks(channel, reply)
                         log.info("job %s delivered to channel %s (%d chars)", job.name, job.channel_id, len(reply))
                     except Exception as e:
                         log.error("job %s delivery failed: %s", job.name, e)

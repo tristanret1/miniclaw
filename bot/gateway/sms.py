@@ -13,6 +13,7 @@ from bot.config import (
     SMS_WEBHOOK_URL,
     TWILIO_AUTH_TOKEN,
 )
+from bot.utils.session_keys import sms_key
 from bot.logger import get_logger
 from bot.message import build_user_content
 
@@ -85,7 +86,7 @@ async def handle_incoming_sms(request: web.Request) -> web.Response:
 async def _process_sms(from_number: str, body: str, image_urls: list[str]) -> None:
     """Process an incoming SMS and reply via Twilio."""
     try:
-        session_key = f"sms:{from_number}"
+        session_key = sms_key(from_number)
         user_content = build_user_content(body or "(empty message)", image_urls)
 
         from bot import llm

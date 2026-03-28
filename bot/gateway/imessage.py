@@ -18,6 +18,7 @@ from bot.config import (
 )
 from bot.logger import get_logger
 from bot.message import build_user_content
+from bot.utils.session_keys import imessage_key
 
 log = get_logger("imessage")
 
@@ -208,7 +209,7 @@ def _is_allowed(sender: str) -> bool:
 async def _process_message(client: IMessageRpcClient, sender: str, text: str, chat_id: int | None = None) -> None:
     """Process an inbound iMessage and reply."""
     try:
-        session_key = f"imessage:{_normalize_handle(sender)}"
+        session_key = imessage_key(sender)
         user_content = build_user_content(text or "(empty message)", [])
 
         from bot import llm

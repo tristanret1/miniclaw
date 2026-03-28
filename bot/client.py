@@ -6,6 +6,8 @@ import discord
 from bot import llm
 from bot.agent import Agent
 from bot.message import build_user_content
+from bot.utils.discord import send_chunks
+from bot.utils.session_keys import discord_key, greeting_key
 from bot.config import (
     AUTO_REPLY_ENABLED, AUTO_REPLY_CHANNELS, AUTO_REPLY_CHANCE, AUTO_REPLY_KEYWORDS,
     HEARTBEAT_ENABLED, HEARTBEAT_INTERVAL, HEARTBEAT_CHANNEL_ID,
@@ -81,7 +83,7 @@ async def _send_greeting(bot: discord.Client, agent: Agent) -> None:
         if channel is None:
             channel = await bot.fetch_channel(GREETING_CHANNEL_ID)
 
-        session_key = f"{GREETING_CHANNEL_ID}:system"
+        session_key = greeting_key(GREETING_CHANNEL_ID)
 
         # Load history and build a summary instead of carrying full history
         from bot.storage.session import SessionManager
@@ -198,8 +200,7 @@ def create_bot(agent: Agent) -> discord.Client:
                         channel = _bot.get_channel(int(_cid))
                         if channel is None:
                             channel = await _bot.fetch_channel(int(_cid))
-                        for i in range(0, len(text), 2000):
-                            await channel.send(text[i : i + 2000])
+                        await send_chunks(channel, text)
                     except Exception as e:
                         log.error("heartbeat delivery to channel %s failed: %s", _cid, e)
                         raise
@@ -257,8 +258,7 @@ def create_bot(agent: Agent) -> discord.Client:
                 await sent_msg.edit(content=buffer)
             else:
                 await sent_msg.edit(content=buffer[:2000])
-                for i in range(2000, len(buffer), 2000):
-                    await message.channel.send(buffer[i : i + 2000])
+                await send_chunks(message.channel, buffer[2000:])
         elif buffer.strip():
             for i in range(0, len(buffer), 2000):
                 await message.reply(buffer[i : i + 2000])
@@ -314,7 +314,7 @@ def create_bot(agent: Agent) -> discord.Client:
                 log.info("skill command: /%s args=%r", skill.name, args[:100] if args else "")
                 content = build_skill_user_message(skill, args)
 
-        session_key = f"{message.channel.id}:{message.author.id}"
+        session_key = discord_key(message.channel.id, message.author.id)
         user_content = build_user_content(content, image_urls if image_urls else None)
 
         if image_urls:
