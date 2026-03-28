@@ -5,7 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from bot.config import MAX_HISTORY, PROVIDER, WORKSPACE_DIR
-from bot.db import use_postgres
+from bot.storage.db import use_postgres
 from bot.logger import get_logger
 from bot.message import Content, Message
 from bot.provider.transform import sanitize
@@ -77,7 +77,7 @@ async def _load_from_db(session_key: str, limit: int, db_path: Path | None = Non
 
 async def _pg_load(session_key: str, limit: int) -> list[Message]:
     """Load recent messages from PostgreSQL."""
-    from bot.db import get_pool
+    from bot.storage.db import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -112,7 +112,7 @@ async def _persist(session_key: str, role: str, content: Content, db_path: Path 
         content_str = str(content)
 
     if use_postgres():
-        from bot.db import get_pool
+        from bot.storage.db import get_pool
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute(
@@ -132,7 +132,7 @@ async def _persist(session_key: str, role: str, content: Content, db_path: Path 
 async def clear_session(session_key: str, db_path: Path | None = None) -> int:
     """Delete all messages for a session. Returns count deleted."""
     if use_postgres():
-        from bot.db import get_pool
+        from bot.storage.db import get_pool
         pool = await get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute("DELETE FROM messages WHERE session_key = $1", session_key)
@@ -195,7 +195,7 @@ class SessionManager:
         """Check if auto-flush should trigger for this session."""
         if session_key in self._flushed:
             return False
-        from bot.memory import should_flush as check_flush
+        from bot.storage.memory import should_flush as check_flush
         return check_flush(await self.get_history(session_key))
 
     def mark_flushed(self, session_key: str) -> None:

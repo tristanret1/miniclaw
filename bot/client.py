@@ -15,7 +15,7 @@ from bot.config import (
     get_loaded_skills,
 )
 from bot.skills import match_skill_command, build_skill_user_message, build_skill_command_list
-from bot import memory
+from bot.storage import memory
 from bot.logger import get_logger
 
 log = get_logger("client")
@@ -84,7 +84,7 @@ async def _send_greeting(bot: discord.Client, agent: Agent) -> None:
         session_key = f"{GREETING_CHANNEL_ID}:system"
 
         # Load history and build a summary instead of carrying full history
-        from bot.session import SessionManager
+        from bot.storage.session import SessionManager
         from bot.message import extract_text
         session_mgr = agent.session_mgr or SessionManager()
         history = await session_mgr.get_history(session_key)

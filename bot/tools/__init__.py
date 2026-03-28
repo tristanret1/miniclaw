@@ -1,6 +1,7 @@
 """Tool definitions and execution for Claude tool use."""
 
-from bot import acp, memory
+from bot import acp
+from bot.storage import memory
 from bot.config import (
     GOOGLE_CALENDAR_ENABLED,
     HEALTH_TRACKING_ENABLED,

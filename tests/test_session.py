@@ -1,7 +1,7 @@
 """Tests for bot.session — SessionManager cache + SQLite persistence."""
 
-import bot.session as session_mod
-from bot.session import SessionManager
+import bot.storage.session as session_mod
+from bot.storage.session import SessionManager
 
 
 class TestSessionManager:

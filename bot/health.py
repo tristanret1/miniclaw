@@ -52,12 +52,12 @@ def _get_conn() -> sqlite3.Connection:
 # ---------------------------------------------------------------------------
 
 def _use_pg() -> bool:
-    from bot.db import use_postgres
+    from bot.storage.db import use_postgres
     return use_postgres()
 
 
 async def _pg_pool():
-    from bot.db import get_pool
+    from bot.storage.db import get_pool
     return await get_pool()
 
 

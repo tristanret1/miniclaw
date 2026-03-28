@@ -1,7 +1,7 @@
 """Tests for bot.memory — save, search, BM25, vector helpers."""
 
-import bot.memory as memory_mod
-from bot.memory import (
+import bot.storage.memory as memory_mod
+from bot.storage.memory import (
     _cosine_similarity,
     _merge_scores,
     _pack_vector,

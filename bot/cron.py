@@ -18,7 +18,7 @@ from bot.config import (
     SYSTEM_PROMPT,
     WORKSPACE_DIR,
 )
-from bot.db import use_postgres
+from bot.storage.db import use_postgres
 from bot.logger import get_logger
 
 log = get_logger("cron")
@@ -245,7 +245,7 @@ async def create_job(
     now_dt = datetime.now(ZoneInfo(tz))
 
     if use_postgres():
-        from bot.db import get_pool
+        from bot.storage.db import get_pool
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute(
@@ -289,7 +289,7 @@ async def create_job(
 async def list_jobs(include_disabled: bool = False) -> str:
     """List cron jobs. Returns formatted string."""
     if use_postgres():
-        from bot.db import get_pool
+        from bot.storage.db import get_pool
         pool = await get_pool()
         async with pool.acquire() as conn:
             if include_disabled:
@@ -329,7 +329,7 @@ async def list_jobs(include_disabled: bool = False) -> str:
 async def delete_job(job_id: str) -> str:
     """Delete a job by ID or name. Returns confirmation."""
     if use_postgres():
-        from bot.db import get_pool
+        from bot.storage.db import get_pool
         pool = await get_pool()
         async with pool.acquire() as conn:
             row = await conn.fetchrow("SELECT id, name FROM cron_jobs WHERE id=$1", job_id)
@@ -375,7 +375,7 @@ class CronScheduler:
         self._sem = asyncio.Semaphore(CRON_MAX_CONCURRENT)
 
         if use_postgres():
-            from bot.db import get_pool
+            from bot.storage.db import get_pool
             pool = await get_pool()
             await self._pg_catchup_missed(pool)
             await self._pg_arm_timer(pool)
@@ -449,7 +449,7 @@ class CronScheduler:
             return
         if self._ticking:
             if use_postgres():
-                from bot.db import get_pool
+                from bot.storage.db import get_pool
                 pool = await get_pool()
                 await self._pg_arm_timer(pool)
             else:
@@ -461,7 +461,7 @@ class CronScheduler:
             now = time.time()
 
             if use_postgres():
-                from bot.db import get_pool
+                from bot.storage.db import get_pool
                 pool = await get_pool()
                 rows = await pool.fetch(
                     "SELECT * FROM cron_jobs WHERE enabled=true AND next_run_at <= $1", now,
@@ -491,7 +491,7 @@ class CronScheduler:
         finally:
             self._ticking = False
             if use_postgres():
-                from bot.db import get_pool
+                from bot.storage.db import get_pool
                 pool = await get_pool()
                 await self._pg_arm_timer(pool)
             else:
@@ -605,7 +605,7 @@ class CronScheduler:
                                 next_run_at: float | None = None) -> None:
         """Update job state in the active backend."""
         if use_postgres():
-            from bot.db import get_pool
+            from bot.storage.db import get_pool
             pool = await get_pool()
             async with pool.acquire() as conn:
                 if enabled is not None and not enabled:

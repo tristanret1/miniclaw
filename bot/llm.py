@@ -10,7 +10,7 @@ from bot.message import Content
 from bot.processor import StreamProcessor
 from bot.provider import get_default_provider, get_provider
 from bot.provider.base import BaseProvider
-from bot.session import SessionManager
+from bot.storage.session import SessionManager
 
 if TYPE_CHECKING:
     from bot.agent import Agent

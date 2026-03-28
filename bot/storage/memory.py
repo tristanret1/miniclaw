@@ -161,7 +161,7 @@ def _append_to_daily_log(content: str, tags: list[str] | None, memory_dir: Path 
 async def save(content: str, tags: list[str] | None = None, source: str = "agent",
                memory_dir: Path | None = None, agent_name: str = "default") -> str:
     """Save a memory entry to DB + daily Markdown log."""
-    from bot.db import use_postgres
+    from bot.storage.db import use_postgres
 
     if use_postgres():
         return await _pg_save(content, tags, source, memory_dir, agent_name)
@@ -202,7 +202,7 @@ def _sqlite_save(content: str, tags: list[str] | None, source: str,
 async def _pg_save(content: str, tags: list[str] | None, source: str,
                    memory_dir: Path | None, agent_name: str = "default") -> str:
     """Save via PostgreSQL."""
-    from bot.db import get_pool
+    from bot.storage.db import get_pool
 
     tags_str = ", ".join(tags) if tags else ""
     pool = await get_pool()
@@ -230,7 +230,7 @@ async def _pg_save(content: str, tags: list[str] | None, source: str,
 async def search(query: str, max_results: int = 10, memory_dir: Path | None = None,
                  agent_name: str = "default") -> str:
     """Hybrid search: BM25 + vector similarity when embeddings available."""
-    from bot.db import use_postgres
+    from bot.storage.db import use_postgres
 
     if use_postgres():
         return await _pg_search(query, max_results, agent_name)
@@ -356,7 +356,7 @@ def _merge_scores(
 
 async def _pg_search(query: str, max_results: int, agent_name: str = "default") -> str:
     """Hybrid search via PostgreSQL: tsvector FTS + pgvector cosine similarity."""
-    from bot.db import get_pool
+    from bot.storage.db import get_pool
 
     pool = await get_pool()
 

@@ -62,7 +62,7 @@ def pytest_configure(config):
 @pytest.fixture
 def session_db(tmp_path, monkeypatch):
     """Redirect session DB to a temp file."""
-    import bot.session as session_mod
+    import bot.storage.session as session_mod
     db_path = tmp_path / "sessions.db"
     monkeypatch.setattr(session_mod, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(session_mod, "_conns", {})
@@ -76,7 +76,7 @@ def session_db(tmp_path, monkeypatch):
 @pytest.fixture
 def memory_db(tmp_path, monkeypatch):
     """Redirect memory DB and log dir to temp."""
-    import bot.memory as memory_mod
+    import bot.storage.memory as memory_mod
     db_path = tmp_path / "memory.db"
     mem_dir = tmp_path / "memory"
     mem_dir.mkdir()

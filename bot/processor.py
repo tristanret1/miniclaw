@@ -8,11 +8,11 @@ from datetime import datetime, timezone
 from bot.config import PROVIDER, SYSTEM_PROMPT, TOOLS_ENABLED
 from bot.constants import MAX_TOOL_ROUNDS
 from bot.logger import get_logger
-from bot.memory import get_flush_prompt
+from bot.storage.memory import get_flush_prompt
 from bot.message import Content, extract_text
 from bot.provider.base import BaseProvider
 from bot.provider.transform import sanitize, strip_tool_blocks
-from bot.session import SessionManager
+from bot.storage.session import SessionManager
 from bot.tools import ALL_TOOLS, handle_tool_call
 
 log = get_logger("processor")

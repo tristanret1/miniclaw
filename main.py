@@ -31,12 +31,12 @@ import asyncio
 from bot.config import SMS_ENABLED, IMESSAGE_ENABLED, VOICE_ENABLED
 from bot.agent import load_agents
 from bot.client import create_bot
-from bot.session import SessionManager
+from bot.storage.session import SessionManager
 
 
 async def main():
     # Initialize PostgreSQL pool + schema if DATABASE_URL is set
-    from bot import db
+    from bot.storage import db
     if db.use_postgres():
         await db.ensure_schema()
         print("Using PostgreSQL backend (Neon)")
