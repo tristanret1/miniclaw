@@ -64,21 +64,31 @@ class TestExtractImageUrls:
         assert urls == []
 
 
+def _mock_auto_reply_config(enabled=False, channels=None, chance=0.1, keywords=None):
+    """Create a mock get_config() that returns the given auto_reply settings."""
+    cfg = MagicMock()
+    cfg.discord.auto_reply.enabled = enabled
+    cfg.discord.auto_reply.channels = channels or []
+    cfg.discord.auto_reply.chance = chance
+    cfg.discord.auto_reply.keywords = keywords or []
+    return cfg
+
+
 class TestShouldAutoReply:
-    def test_disabled(self, monkeypatch):
-        monkeypatch.setattr("bot.client.AUTO_REPLY_ENABLED", False)
-        msg, _ = _make_message(guild=True)
-        bot_user = MagicMock()
-        assert should_auto_reply(msg, bot_user) is False
+    def test_disabled(self):
+        with patch("bot.client.get_config", return_value=_mock_auto_reply_config(enabled=False)):
+            msg, _ = _make_message(guild=True)
+            bot_user = MagicMock()
+            assert should_auto_reply(msg, bot_user) is False
 
-    def test_dm_rejected(self, monkeypatch):
-        monkeypatch.setattr("bot.client.AUTO_REPLY_ENABLED", True)
-        msg, _ = _make_message(guild=False)
-        bot_user = MagicMock()
-        assert should_auto_reply(msg, bot_user) is False
+    def test_dm_rejected(self):
+        with patch("bot.client.get_config", return_value=_mock_auto_reply_config(enabled=True)):
+            msg, _ = _make_message(guild=False)
+            bot_user = MagicMock()
+            assert should_auto_reply(msg, bot_user) is False
 
-    def test_mention_rejected(self, monkeypatch):
-        monkeypatch.setattr("bot.client.AUTO_REPLY_ENABLED", True)
-        bot_user = MagicMock()
-        msg, _ = _make_message(guild=True, mentions=[bot_user])
-        assert should_auto_reply(msg, bot_user) is False
+    def test_mention_rejected(self):
+        with patch("bot.client.get_config", return_value=_mock_auto_reply_config(enabled=True)):
+            bot_user = MagicMock()
+            msg, _ = _make_message(guild=True, mentions=[bot_user])
+            assert should_auto_reply(msg, bot_user) is False

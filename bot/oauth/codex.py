@@ -23,7 +23,7 @@ from bot.logger import get_logger
 
 log = get_logger("codex_oauth")
 
-CREDENTIALS_PATH = Path(__file__).parent.parent / ".codex_credentials.json"
+CREDENTIALS_PATH = Path(__file__).parent.parent.parent / ".codex_credentials.json"
 
 POLLING_SAFETY_MARGIN = 3  # seconds
 

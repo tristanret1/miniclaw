@@ -19,7 +19,7 @@ from bot.constants import (
     ANTHROPIC_SCOPES as SCOPES,
 )
 
-CREDENTIALS_PATH = Path(__file__).parent.parent / ".credentials.json"
+CREDENTIALS_PATH = Path(__file__).parent.parent.parent / ".credentials.json"
 
 
 def _generate_pkce():
