@@ -10,21 +10,20 @@ from pathlib import Path
 
 import httpx
 
+from bot.constants import (
+    CODEX_API_ENDPOINT,
+    CODEX_CLIENT_ID as CLIENT_ID,
+    CODEX_DEVICE_AUTH_PAGE as DEVICE_AUTH_PAGE,
+    CODEX_DEVICE_CODE_URL as DEVICE_CODE_URL,
+    CODEX_DEVICE_REDIRECT_URI as DEVICE_REDIRECT_URI,
+    CODEX_DEVICE_TOKEN_URL as DEVICE_TOKEN_URL,
+    CODEX_TOKEN_URL as TOKEN_URL,
+)
 from bot.logger import get_logger
 
 log = get_logger("codex_oauth")
 
-CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
-ISSUER = "https://auth.openai.com"
-CODEX_API_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses"
-
 CREDENTIALS_PATH = Path(__file__).parent.parent / ".codex_credentials.json"
-
-DEVICE_CODE_URL = f"{ISSUER}/api/accounts/deviceauth/usercode"
-DEVICE_TOKEN_URL = f"{ISSUER}/api/accounts/deviceauth/token"
-TOKEN_URL = f"{ISSUER}/oauth/token"
-DEVICE_REDIRECT_URI = f"{ISSUER}/deviceauth/callback"
-DEVICE_AUTH_PAGE = f"{ISSUER}/codex/device"
 
 POLLING_SAFETY_MARGIN = 3  # seconds
 

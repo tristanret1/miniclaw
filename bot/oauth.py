@@ -11,11 +11,13 @@ from urllib.parse import urlencode
 
 import httpx
 
-CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-AUTHORIZATION_URL = "https://claude.ai/oauth/authorize"
-TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
-REDIRECT_URI = "https://platform.claude.com/oauth/code/callback"
-SCOPES = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers"
+from bot.constants import (
+    ANTHROPIC_CLIENT_ID as CLIENT_ID,
+    ANTHROPIC_AUTHORIZATION_URL as AUTHORIZATION_URL,
+    ANTHROPIC_TOKEN_URL as TOKEN_URL,
+    ANTHROPIC_REDIRECT_URI as REDIRECT_URI,
+    ANTHROPIC_SCOPES as SCOPES,
+)
 
 CREDENTIALS_PATH = Path(__file__).parent.parent / ".credentials.json"
 

@@ -13,6 +13,16 @@ from pathlib import Path
 import httpx
 
 from bot.config import OPENAI_API_KEY, WORKSPACE_DIR
+from bot.constants import (
+    BM25_WEIGHT,
+    EMBEDDING_MODEL,
+    MEMORY_CHARS_PER_TOKEN as CHARS_PER_TOKEN,
+    MEMORY_CHUNK_OVERLAP as CHUNK_OVERLAP,
+    MEMORY_CHUNK_TOKENS as CHUNK_TOKENS,
+    OPENAI_EMBEDDINGS_URL,
+    VECTOR_WEIGHT,
+    AUTO_FLUSH_CHAR_THRESHOLD as FLUSH_THRESHOLD_CHARS,
+)
 from bot.logger import get_logger
 
 log = get_logger("memory")
@@ -21,18 +31,6 @@ DEFAULT_MEMORY_DIR = WORKSPACE_DIR / "memory"
 DEFAULT_MEMORY_DIR.mkdir(parents=True, exist_ok=True)
 
 DB_PATH = DEFAULT_MEMORY_DIR / "memory.db"
-
-# Chunking config (mirrors openclaw defaults)
-CHUNK_TOKENS = 400
-CHUNK_OVERLAP = 80
-CHARS_PER_TOKEN = 4  # rough estimate
-
-EMBEDDING_MODEL = "text-embedding-3-small"
-EMBEDDING_DIM = 1536
-
-# Hybrid search weights
-BM25_WEIGHT = 0.4
-VECTOR_WEIGHT = 0.6
 
 
 # ── SQLite setup ──────────────────────────────────────────────────────────────
@@ -103,7 +101,7 @@ def _get_embedding(text: str) -> list[float] | None:
 
     try:
         resp = httpx.post(
-            "https://api.openai.com/v1/embeddings",
+            OPENAI_EMBEDDINGS_URL,
             json={"input": text, "model": EMBEDDING_MODEL},
             headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
             timeout=30,
@@ -450,10 +448,6 @@ FLUSH_PROMPT = (
     "- Facts that would be useful in future conversations\n"
     "Do NOT save trivial small talk. Be concise."
 )
-
-# Rough estimate: 4 chars per token
-FLUSH_THRESHOLD_CHARS = 80_000  # ~20k tokens, trigger flush well before context limit
-
 
 def should_flush(history: list[dict]) -> bool:
     """Check if conversation history is long enough to trigger auto-flush."""

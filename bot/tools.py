@@ -15,14 +15,15 @@ from bot.config import (
     TWILIO_FROM_NUMBER,
     VOICE_ENABLED,
 )
+from bot.constants import EXEC_DEFAULT_TIMEOUT, TOOL_MAX_OUTPUT_CHARS, TWILIO_API_BASE
 from bot.logger import get_logger
 from bot import acp, memory
 
 log = get_logger("tools")
 
 # Max output length to avoid flooding Discord / Claude context
-MAX_OUTPUT_CHARS = 4000
-DEFAULT_TIMEOUT = 30
+MAX_OUTPUT_CHARS = TOOL_MAX_OUTPUT_CHARS
+DEFAULT_TIMEOUT = EXEC_DEFAULT_TIMEOUT
 
 
 EXEC_TOOL = {
@@ -656,7 +657,7 @@ async def run_sms(to: str, message: str) -> str:
 
     log.info("sms → to=%s len=%d", to, len(message))
 
-    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json"
+    url = f"{TWILIO_API_BASE}/{TWILIO_ACCOUNT_SID}/Messages.json"
     payload = {
         "To": to,
         "From": TWILIO_FROM_NUMBER,
@@ -701,7 +702,7 @@ async def run_phone_call(to: str, message: str, language: str = "zh-CN") -> str:
         "</Response>"
     )
 
-    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Calls.json"
+    url = f"{TWILIO_API_BASE}/{TWILIO_ACCOUNT_SID}/Calls.json"
     payload = {
         "To": to,
         "From": TWILIO_FROM_NUMBER,

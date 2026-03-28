@@ -11,6 +11,13 @@ from collections.abc import AsyncIterator
 
 import httpx
 
+from bot.constants import (
+    ANTHROPIC_API_URL,
+    ANTHROPIC_API_VERSION,
+    ANTHROPIC_BETA_FEATURES,
+    CLAUDE_CODE_SYSTEM_PREFIX,
+    CLAUDE_CODE_VERSION,
+)
 from bot.logger import get_logger
 from bot.message import Message
 from bot.oauth import load_credentials, refresh_token
@@ -18,13 +25,9 @@ from bot.provider.base import BaseProvider
 
 log = get_logger("anthropic")
 
-# Stealth mode: mimic Claude Code identity (aligned with pi-mono)
-_CLAUDE_CODE_VERSION = "2.1.75"
-_CLAUDE_CODE_SYSTEM_PREFIX = "You are Claude Code, Anthropic's official CLI for Claude."
-
 
 class AnthropicProvider(BaseProvider):
-    API_URL = "https://api.anthropic.com/v1/messages"
+    API_URL = ANTHROPIC_API_URL
 
     def __init__(self, model: str):
         self.model = model
@@ -48,9 +51,9 @@ class AnthropicProvider(BaseProvider):
     def _headers(self, token: str) -> dict:
         return {
             "Authorization": f"Bearer {token}",
-            "anthropic-version": "2023-06-01",
-            "anthropic-beta": "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14",
-            "user-agent": f"claude-cli/{_CLAUDE_CODE_VERSION}",
+            "anthropic-version": ANTHROPIC_API_VERSION,
+            "anthropic-beta": ANTHROPIC_BETA_FEATURES,
+            "user-agent": f"claude-cli/{CLAUDE_CODE_VERSION}",
             "x-app": "cli",
             "Content-Type": "application/json",
             "accept": "application/json",
@@ -62,7 +65,7 @@ class AnthropicProvider(BaseProvider):
         blocks = [
             {
                 "type": "text",
-                "text": _CLAUDE_CODE_SYSTEM_PREFIX,
+                "text": CLAUDE_CODE_SYSTEM_PREFIX,
                 "cache_control": {"type": "ephemeral"},
             },
         ]

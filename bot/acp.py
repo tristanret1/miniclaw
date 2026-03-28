@@ -13,11 +13,12 @@ from claude_agent_sdk.types import (
 )
 
 from bot.config import ACP_CWD
+from bot.constants import ACP_MAX_OUTPUT_CHARS
 from bot.logger import get_logger
 
 log = get_logger("acp")
 
-MAX_OUTPUT_CHARS = 8000
+MAX_OUTPUT_CHARS = ACP_MAX_OUTPUT_CHARS
 
 
 async def run_prompt(task: str, cwd: str | None = None, timeout: int = 300) -> str:

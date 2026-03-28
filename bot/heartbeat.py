@@ -12,13 +12,10 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from bot.constants import HEARTBEAT_TOKEN
 from bot.logger import get_logger
 
 log = get_logger("heartbeat")
-
-# ── Constants ────────────────────────────────────────────────────────────────
-
-HEARTBEAT_TOKEN = "HEARTBEAT_OK"
 
 HEARTBEAT_PROMPT = (
     "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. "
