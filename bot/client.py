@@ -15,6 +15,7 @@ from bot.config import (
     HEARTBEAT_ACK_MAX_CHARS, HEARTBEAT_ISOLATED,
     ALLOWED_DM_USERS,
     get_loaded_skills,
+    get_config,
 )
 from bot.skills import match_skill_command, build_skill_user_message, build_skill_command_list
 from bot.storage import memory
@@ -73,17 +74,20 @@ def should_auto_reply(message: discord.Message, bot_user) -> bool:
     return random.random() < AUTO_REPLY_CHANCE
 
 
-GREETING_CHANNEL_ID = 1482258781860532344
-
-
 async def _send_greeting(bot: discord.Client, agent: Agent) -> None:
     """Send a startup greeting with a summary of past conversations."""
     try:
-        channel = bot.get_channel(GREETING_CHANNEL_ID)
-        if channel is None:
-            channel = await bot.fetch_channel(GREETING_CHANNEL_ID)
+        greeting_channel_id_str = get_config().discord.greeting_channel_id
+        if not greeting_channel_id_str:
+            log.warning("_send_greeting called but discord.greeting_channel_id not configured")
+            return
+        greeting_channel_id = int(greeting_channel_id_str)
 
-        session_key = greeting_key(GREETING_CHANNEL_ID)
+        channel = bot.get_channel(greeting_channel_id)
+        if channel is None:
+            channel = await bot.fetch_channel(greeting_channel_id)
+
+        session_key = greeting_key(greeting_channel_id)
 
         # Load history and build a summary instead of carrying full history
         from bot.storage.session import SessionManager
@@ -127,7 +131,7 @@ async def _send_greeting(bot: discord.Client, agent: Agent) -> None:
 
         greeting = await llm.reply(session_key, prompt, agent=agent)
         await channel.send(greeting[:2000])
-        log.info("startup greeting sent to channel %s", GREETING_CHANNEL_ID)
+        log.info("startup greeting sent to channel %s", greeting_channel_id)
     except Exception as e:
         log.error("failed to send startup greeting: %s", e)
 

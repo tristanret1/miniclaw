@@ -11,7 +11,7 @@ llm:
   tools_enabled: false
 
 discord:
-  greeting_channel_id: ""
+  greeting_channel_id: "1482258781860532344"
   allowed_dm_users: []
   auto_reply:
     enabled: false
