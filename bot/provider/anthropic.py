@@ -9,8 +9,6 @@ Aligns with pi-mono/packages/ai Anthropic provider conventions:
 import json
 from collections.abc import AsyncIterator
 
-import httpx
-
 from bot.constants import (
     ANTHROPIC_API_URL,
     ANTHROPIC_API_VERSION,
@@ -30,17 +28,8 @@ class AnthropicProvider(BaseProvider):
     API_URL = ANTHROPIC_API_URL
 
     def __init__(self, model: str):
+        super().__init__()
         self.model = model
-        self._http: httpx.AsyncClient | None = None
-
-    def _get_client(self) -> httpx.AsyncClient:
-        if self._http is None or self._http.is_closed:
-            self._http = httpx.AsyncClient(
-                timeout=httpx.Timeout(120, connect=10),
-                http2=True,
-                limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
-            )
-        return self._http
 
     def _get_access_token(self) -> str:
         creds = load_credentials()
