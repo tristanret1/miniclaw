@@ -14,15 +14,7 @@ import edge_tts
 import httpx
 from openai import AsyncOpenAI
 
-from bot.config import (
-    OPENAI_API_KEY,
-    TTS_MODEL,
-    TTS_SPEED,
-    TTS_VOICE,
-    VOLCENGINE_TTS_API_KEY,
-    VOLCENGINE_TTS_RESOURCE_ID,
-    VOLCENGINE_TTS_SPEAKER,
-)
+from bot.config import get_config, get_secrets
 from bot.logger import get_logger
 
 log = get_logger("tts")
@@ -42,7 +34,7 @@ _VOLCENGINE_TTS_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectiona
 def _get_openai_client() -> AsyncOpenAI:
     global _openai_client
     if _openai_client is None:
-        _openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+        _openai_client = AsyncOpenAI(api_key=get_secrets()["OPENAI_API_KEY"])
     return _openai_client
 
 
@@ -58,7 +50,7 @@ def _volcengine_request_body(text: str, *, fmt: str = "mp3") -> dict:
     return {
         "req_params": {
             "text": text,
-            "speaker": VOLCENGINE_TTS_SPEAKER,
+            "speaker": get_config().gateway.volcengine.tts_speaker,
             "additions": json.dumps({
                 "disable_markdown_filter": True,
                 "enable_language_detector": True,
@@ -77,8 +69,8 @@ def _volcengine_request_body(text: str, *, fmt: str = "mp3") -> dict:
 
 def _volcengine_headers() -> dict[str, str]:
     return {
-        "x-api-key": VOLCENGINE_TTS_API_KEY,
-        "X-Api-Resource-Id": VOLCENGINE_TTS_RESOURCE_ID,
+        "x-api-key": get_secrets()["VOLCENGINE_TTS_API_KEY"],
+        "X-Api-Resource-Id": get_config().gateway.volcengine.tts_resource_id,
         "Content-Type": "application/json",
         "Connection": "keep-alive",
     }
@@ -108,11 +100,12 @@ async def synthesize_openai(
 ) -> bytes:
     """Synthesize speech using OpenAI TTS API. Returns MP3 bytes."""
     c = client or _get_openai_client()
+    _voice_cfg = get_config().gateway.voice
     response = await c.audio.speech.create(
-        model=model or TTS_MODEL,
-        voice=voice or TTS_VOICE,
+        model=model or _voice_cfg.tts_model,
+        voice=voice or _voice_cfg.tts_voice,
         input=text,
-        speed=TTS_SPEED,
+        speed=_voice_cfg.tts_speed,
         response_format="mp3",
     )
     return response.content
@@ -201,11 +194,12 @@ async def stream_openai(
     near-instant playback start.
     """
     c = client or _get_openai_client()
+    _voice_cfg = get_config().gateway.voice
     async with c.audio.speech.with_streaming_response.create(
-        model=model or TTS_MODEL,
-        voice=voice or TTS_VOICE,
+        model=model or _voice_cfg.tts_model,
+        voice=voice or _voice_cfg.tts_voice,
         input=text,
-        speed=TTS_SPEED,
+        speed=_voice_cfg.tts_speed,
         response_format="pcm",
     ) as response:
         async for chunk in response.iter_bytes(chunk_size=STREAM_CHUNK_SIZE):

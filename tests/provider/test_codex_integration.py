@@ -5,7 +5,7 @@ Requires: .codex_credentials.json with valid tokens.
 """
 
 import pytest
-from bot.codex_oauth import load_credentials
+from bot.oauth.codex import load_credentials
 from bot.provider.codex import CodexProvider
 
 # Skip all tests if no credentials

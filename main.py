@@ -28,15 +28,15 @@ if not env_path.exists() or not creds_path.exists():
     print()
 
 import asyncio
-from bot.config import SMS_ENABLED, IMESSAGE_ENABLED, VOICE_ENABLED
+from bot.config import get_config
 from bot.agent import load_agents
 from bot.client import create_bot
-from bot.session import SessionManager
+from bot.storage.session import SessionManager
 
 
 async def main():
     # Initialize PostgreSQL pool + schema if DATABASE_URL is set
-    from bot import db
+    from bot.storage import db
     if db.use_postgres():
         await db.ensure_schema()
         print("Using PostgreSQL backend (Neon)")
@@ -57,7 +57,7 @@ async def main():
 
     if _voice_only:
         # Voice-only mode — skip Discord bots and other gateways
-        from bot.voice_gateway import start_voice_gateway
+        from bot.gateway.voice import start_voice_gateway
         tasks.append(start_voice_gateway(agent=voice_agent))
         print(f"Voice-only mode (agent={voice_agent.name if voice_agent else 'default'})")
     else:
@@ -68,16 +68,17 @@ async def main():
             bot = create_bot(agent)
             tasks.append(bot.start(agent.discord_token))
 
-        if SMS_ENABLED:
-            from bot.sms_gateway import start_sms_server
+        _gw_cfg = get_config().gateway
+        if _gw_cfg.sms.enabled:
+            from bot.gateway.sms import start_sms_server
             tasks.append(start_sms_server())
 
-        if IMESSAGE_ENABLED:
-            from bot.imessage_gateway import start_imessage_gateway
+        if _gw_cfg.imessage.enabled:
+            from bot.gateway.imessage import start_imessage_gateway
             tasks.append(start_imessage_gateway())
 
-        if VOICE_ENABLED:
-            from bot.voice_gateway import start_voice_gateway
+        if _gw_cfg.voice.enabled:
+            from bot.gateway.voice import start_voice_gateway
             tasks.append(start_voice_gateway(agent=voice_agent))
 
     try:

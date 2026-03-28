@@ -6,7 +6,7 @@ or None if no wake word is detected.
 
 from __future__ import annotations
 
-from bot.config import WAKE_WORDS as DEFAULT_WAKE_WORDS
+from bot.config import get_config
 
 
 def check(text: str, *, wake_words: list[str] | None = None) -> str | None:
@@ -22,7 +22,7 @@ def check(text: str, *, wake_words: list[str] | None = None) -> str | None:
     if not text:
         return None
 
-    words = wake_words or DEFAULT_WAKE_WORDS
+    words = wake_words or get_config().gateway.voice.wake_words
     text_lower = text.lower().strip()
 
     for word in words:

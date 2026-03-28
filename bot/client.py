@@ -6,16 +6,14 @@ import discord
 from bot import llm
 from bot.agent import Agent
 from bot.message import build_user_content
+from bot.utils.discord import send_chunks
+from bot.utils.session_keys import discord_key, greeting_key
 from bot.config import (
-    AUTO_REPLY_ENABLED, AUTO_REPLY_CHANNELS, AUTO_REPLY_CHANCE, AUTO_REPLY_KEYWORDS,
-    HEARTBEAT_ENABLED, HEARTBEAT_INTERVAL, HEARTBEAT_CHANNEL_ID,
-    HEARTBEAT_ACTIVE_START, HEARTBEAT_ACTIVE_END, HEARTBEAT_ACTIVE_TZ,
-    HEARTBEAT_ACK_MAX_CHARS, HEARTBEAT_ISOLATED,
-    ALLOWED_DM_USERS,
+    get_config,
     get_loaded_skills,
 )
 from bot.skills import match_skill_command, build_skill_user_message, build_skill_command_list
-from bot import memory
+from bot.storage import memory
 from bot.logger import get_logger
 
 log = get_logger("client")
@@ -53,38 +51,42 @@ def _extract_image_urls(message: discord.Message) -> list[str]:
 
 
 def should_auto_reply(message: discord.Message, bot_user) -> bool:
-    if not AUTO_REPLY_ENABLED:
+    cfg = get_config().discord.auto_reply
+    if not cfg.enabled:
         return False
     if message.guild is None:
         return False
     if bot_user in message.mentions:
         return False
-    if AUTO_REPLY_CHANNELS and AUTO_REPLY_CHANNELS != ['']:
-        if str(message.channel.id) not in AUTO_REPLY_CHANNELS:
-            return False
-    if AUTO_REPLY_KEYWORDS and AUTO_REPLY_KEYWORDS != ['']:
+    channels = [c for c in cfg.channels if c]
+    if channels and str(message.channel.id) not in channels:
+        return False
+    keywords = [k for k in cfg.keywords if k]
+    if keywords:
         content_lower = message.content.lower()
-        keyword_triggered = any(keyword.strip().lower() in content_lower
-                              for keyword in AUTO_REPLY_KEYWORDS if keyword.strip())
+        keyword_triggered = any(k.strip().lower() in content_lower for k in keywords if k.strip())
         if not keyword_triggered:
             return False
-    return random.random() < AUTO_REPLY_CHANCE
-
-
-GREETING_CHANNEL_ID = 1482258781860532344
+    return random.random() < cfg.chance
 
 
 async def _send_greeting(bot: discord.Client, agent: Agent) -> None:
     """Send a startup greeting with a summary of past conversations."""
     try:
-        channel = bot.get_channel(GREETING_CHANNEL_ID)
-        if channel is None:
-            channel = await bot.fetch_channel(GREETING_CHANNEL_ID)
+        greeting_channel_id_str = get_config().discord.greeting_channel_id
+        if not greeting_channel_id_str:
+            log.warning("_send_greeting called but discord.greeting_channel_id not configured")
+            return
+        greeting_channel_id = int(greeting_channel_id_str)
 
-        session_key = f"{GREETING_CHANNEL_ID}:system"
+        channel = bot.get_channel(greeting_channel_id)
+        if channel is None:
+            channel = await bot.fetch_channel(greeting_channel_id)
+
+        session_key = greeting_key(greeting_channel_id)
 
         # Load history and build a summary instead of carrying full history
-        from bot.session import SessionManager
+        from bot.storage.session import SessionManager
         from bot.message import extract_text
         session_mgr = agent.session_mgr or SessionManager()
         history = await session_mgr.get_history(session_key)
@@ -125,7 +127,7 @@ async def _send_greeting(bot: discord.Client, agent: Agent) -> None:
 
         greeting = await llm.reply(session_key, prompt, agent=agent)
         await channel.send(greeting[:2000])
-        log.info("startup greeting sent to channel %s", GREETING_CHANNEL_ID)
+        log.info("startup greeting sent to channel %s", greeting_channel_id)
     except Exception as e:
         log.error("failed to send startup greeting: %s", e)
 
@@ -170,16 +172,16 @@ def create_bot(agent: Agent) -> discord.Client:
     async def on_ready():
         global _cron_started
         print(f"Agent '{agent.name}' online as {bot.user}")
-        if AUTO_REPLY_ENABLED:
-            print(f"Auto-reply enabled with {AUTO_REPLY_CHANCE*100}% chance")
+        _cfg = get_config()
+        if _cfg.discord.auto_reply.enabled:
+            print(f"Auto-reply enabled with {_cfg.discord.auto_reply.chance*100}% chance")
 
         # Send startup greeting
         # await _send_greeting(bot, agent)
 
         # Start cron scheduler only once (first agent)
         if not _cron_started:
-            from bot.config import CRON_ENABLED
-            if CRON_ENABLED:
+            if _cfg.services.cron.enabled:
                 from bot.cron import get_scheduler
                 scheduler = get_scheduler()
                 await scheduler.start(bot)
@@ -187,10 +189,11 @@ def create_bot(agent: Agent) -> discord.Client:
             _cron_started = True
 
         # Start heartbeat for this agent
-        if HEARTBEAT_ENABLED and agent.name not in _heartbeat_runners:
-            channel_id = HEARTBEAT_CHANNEL_ID
+        hb_cfg = _cfg.gateway.heartbeat
+        if hb_cfg.enabled and agent.name not in _heartbeat_runners:
+            channel_id = hb_cfg.channel_id
             if channel_id:
-                from bot.heartbeat import HeartbeatRunner
+                from bot.gateway.heartbeat import HeartbeatRunner
 
                 async def _deliver_heartbeat(text: str, _bot=bot, _cid=channel_id) -> None:
                     """Deliver heartbeat message to configured Discord channel."""
@@ -198,8 +201,7 @@ def create_bot(agent: Agent) -> discord.Client:
                         channel = _bot.get_channel(int(_cid))
                         if channel is None:
                             channel = await _bot.fetch_channel(int(_cid))
-                        for i in range(0, len(text), 2000):
-                            await channel.send(text[i : i + 2000])
+                        await send_chunks(channel, text)
                     except Exception as e:
                         log.error("heartbeat delivery to channel %s failed: %s", _cid, e)
                         raise
@@ -208,18 +210,18 @@ def create_bot(agent: Agent) -> discord.Client:
                     agent=agent,
                     deliver_fn=_deliver_heartbeat,
                     channel_id=str(channel_id),
-                    interval=HEARTBEAT_INTERVAL,
-                    active_hours_start=HEARTBEAT_ACTIVE_START,
-                    active_hours_end=HEARTBEAT_ACTIVE_END,
-                    active_hours_tz=HEARTBEAT_ACTIVE_TZ,
-                    ack_max_chars=HEARTBEAT_ACK_MAX_CHARS,
-                    isolated_session=HEARTBEAT_ISOLATED,
+                    interval=hb_cfg.interval,
+                    active_hours_start=hb_cfg.active_start,
+                    active_hours_end=hb_cfg.active_end,
+                    active_hours_tz=hb_cfg.active_tz,
+                    ack_max_chars=hb_cfg.ack_max_chars,
+                    isolated_session=hb_cfg.isolated,
                 )
                 await runner.start()
                 _heartbeat_runners[agent.name] = runner
-                print(f"Heartbeat started for agent '{agent.name}' (every {HEARTBEAT_INTERVAL})")
+                print(f"Heartbeat started for agent '{agent.name}' (every {hb_cfg.interval})")
             else:
-                log.warning("HEARTBEAT_ENABLED but HEARTBEAT_CHANNEL_ID not set — skipping")
+                log.warning("heartbeat.enabled but heartbeat.channel_id not set — skipping")
 
     async def _send_streaming(message: discord.Message, session_key: str, user_content):
         """Stream Claude's reply, editing a single Discord message progressively."""
@@ -257,8 +259,7 @@ def create_bot(agent: Agent) -> discord.Client:
                 await sent_msg.edit(content=buffer)
             else:
                 await sent_msg.edit(content=buffer[:2000])
-                for i in range(2000, len(buffer), 2000):
-                    await message.channel.send(buffer[i : i + 2000])
+                await send_chunks(message.channel, buffer[2000:])
         elif buffer.strip():
             for i in range(0, len(buffer), 2000):
                 await message.reply(buffer[i : i + 2000])
@@ -269,8 +270,9 @@ def create_bot(agent: Agent) -> discord.Client:
         if message.guild is not None:
             return bot.user in message.mentions
         # DM — only allow whitelisted users
-        if not ALLOWED_DM_USERS or message.author.id not in ALLOWED_DM_USERS:
-            log.debug("DM from %s (%s) blocked — not in ALLOWED_DM_USERS", message.author, message.author.id)
+        allowed_dm_users = get_config().discord.allowed_dm_users
+        if not allowed_dm_users or message.author.id not in allowed_dm_users:
+            log.debug("DM from %s (%s) blocked — not in allowed_dm_users", message.author, message.author.id)
             return False
         return True
 
@@ -314,7 +316,7 @@ def create_bot(agent: Agent) -> discord.Client:
                 log.info("skill command: /%s args=%r", skill.name, args[:100] if args else "")
                 content = build_skill_user_message(skill, args)
 
-        session_key = f"{message.channel.id}:{message.author.id}"
+        session_key = discord_key(message.channel.id, message.author.id)
         user_content = build_user_content(content, image_urls if image_urls else None)
 
         if image_urls:

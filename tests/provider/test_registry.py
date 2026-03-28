@@ -27,8 +27,13 @@ class TestProviderRegistry:
         assert isinstance(provider, AnthropicProvider)
 
     def test_get_default_provider_codex(self, monkeypatch):
-        import bot.config
-        monkeypatch.setattr(bot.config, "PROVIDER", "codex")
-        monkeypatch.setattr(bot.config, "CODEX_MODEL", "gpt-5.3-codex")
-        provider = get_default_provider()
-        assert isinstance(provider, CodexProvider)
+        from bot.config import reset_config
+        from bot.config_schema import AppConfig, LLMConfig, CodexConfig
+        import bot.config as cfg_mod
+        codex_cfg = AppConfig.from_dict({"llm": {"provider": "codex", "codex": {"model": "gpt-5.3-codex"}}})
+        monkeypatch.setattr(cfg_mod, "_config", codex_cfg)
+        try:
+            provider = get_default_provider()
+            assert isinstance(provider, CodexProvider)
+        finally:
+            reset_config()

@@ -63,9 +63,9 @@ async def main():
     pool = await asyncpg.create_pool(database_url, min_size=1, max_size=3, ssl=ssl_ctx, init=_init_conn)
 
     # Ensure schema exists
-    from bot.db import ensure_schema
+    from bot.storage.db import ensure_schema
     # Temporarily set the pool so ensure_schema can use it
-    import bot.db as db_mod
+    import bot.storage.db as db_mod
     db_mod._pool = pool
     await ensure_schema()
     print("Schema verified.")

@@ -19,8 +19,9 @@ def get_provider(provider_id: str, model: str) -> BaseProvider:
 
 
 def get_default_provider() -> BaseProvider:
-    """Get the default provider based on PROVIDER env var."""
-    from bot.config import PROVIDER, CLAUDE_MODEL, CODEX_MODEL
-    if PROVIDER == "codex":
-        return get_provider("codex", CODEX_MODEL)
-    return get_provider("anthropic", CLAUDE_MODEL)
+    """Get the default provider based on config."""
+    from bot.config import get_config
+    cfg = get_config()
+    if cfg.llm.provider == "codex":
+        return get_provider("codex", cfg.llm.codex.model)
+    return get_provider("anthropic", cfg.llm.anthropic.model)

@@ -13,12 +13,13 @@ from zoneinfo import ZoneInfo
 from croniter import croniter
 
 from bot.config import (
-    CRON_MAX_CONCURRENT,
-    CRON_TIMEZONE,
-    SYSTEM_PROMPT,
+    get_config,
+    get_system_prompt,
     WORKSPACE_DIR,
 )
-from bot.db import use_postgres
+from bot.utils.discord import send_chunks
+from bot.utils.session_keys import cron_key
+from bot.storage.db import use_postgres
 from bot.logger import get_logger
 
 log = get_logger("cron")
@@ -226,7 +227,7 @@ async def create_job(
     delivery_channel: str = "discord",
 ) -> str:
     """Create a new cron job. Returns confirmation string."""
-    tz = timezone or CRON_TIMEZONE
+    tz = timezone or get_config().services.cron.timezone
     if schedule_type not in ("every", "cron", "at"):
         return f"Error: invalid schedule_type '{schedule_type}'. Must be 'every', 'cron', or 'at'."
 
@@ -245,7 +246,7 @@ async def create_job(
     now_dt = datetime.now(ZoneInfo(tz))
 
     if use_postgres():
-        from bot.db import get_pool
+        from bot.storage.db import get_pool
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute(
@@ -289,7 +290,7 @@ async def create_job(
 async def list_jobs(include_disabled: bool = False) -> str:
     """List cron jobs. Returns formatted string."""
     if use_postgres():
-        from bot.db import get_pool
+        from bot.storage.db import get_pool
         pool = await get_pool()
         async with pool.acquire() as conn:
             if include_disabled:
@@ -329,7 +330,7 @@ async def list_jobs(include_disabled: bool = False) -> str:
 async def delete_job(job_id: str) -> str:
     """Delete a job by ID or name. Returns confirmation."""
     if use_postgres():
-        from bot.db import get_pool
+        from bot.storage.db import get_pool
         pool = await get_pool()
         async with pool.acquire() as conn:
             row = await conn.fetchrow("SELECT id, name FROM cron_jobs WHERE id=$1", job_id)
@@ -372,10 +373,10 @@ class CronScheduler:
         """Start the scheduler. Call from on_ready()."""
         self._bot = bot
         self._running = True
-        self._sem = asyncio.Semaphore(CRON_MAX_CONCURRENT)
+        self._sem = asyncio.Semaphore(get_config().services.cron.max_concurrent)
 
         if use_postgres():
-            from bot.db import get_pool
+            from bot.storage.db import get_pool
             pool = await get_pool()
             await self._pg_catchup_missed(pool)
             await self._pg_arm_timer(pool)
@@ -449,7 +450,7 @@ class CronScheduler:
             return
         if self._ticking:
             if use_postgres():
-                from bot.db import get_pool
+                from bot.storage.db import get_pool
                 pool = await get_pool()
                 await self._pg_arm_timer(pool)
             else:
@@ -461,7 +462,7 @@ class CronScheduler:
             now = time.time()
 
             if use_postgres():
-                from bot.db import get_pool
+                from bot.storage.db import get_pool
                 pool = await get_pool()
                 rows = await pool.fetch(
                     "SELECT * FROM cron_jobs WHERE enabled=true AND next_run_at <= $1", now,
@@ -491,7 +492,7 @@ class CronScheduler:
         finally:
             self._ticking = False
             if use_postgres():
-                from bot.db import get_pool
+                from bot.storage.db import get_pool
                 pool = await get_pool()
                 await self._pg_arm_timer(pool)
             else:
@@ -503,7 +504,7 @@ class CronScheduler:
             log.info("executing job: %s (%s) mode=%s", job.name, job.id, job.session_mode)
 
             # Build per-job system prompt
-            system_prompt = SYSTEM_PROMPT
+            system_prompt = get_system_prompt()
             task_header = f"\n\n---\n\n[Scheduled Task: {job.name}]"
             if job.context:
                 system_prompt += task_header + "\n" + job.context
@@ -512,9 +513,9 @@ class CronScheduler:
 
             # Use session key for persistent mode, or isolated
             if job.session_mode == "persistent":
-                session_key = f"cron:{job.id}"
+                session_key = cron_key(job.id)
             else:
-                session_key = f"cron:{job.id}:{int(time.time())}"
+                session_key = cron_key(job.id, isolated=True)
 
             # Use the unified LLM entry point
             from bot import llm
@@ -532,7 +533,7 @@ class CronScheduler:
                         raise
                 elif job.delivery_channel == "imessage":
                     try:
-                        from bot.imessage_gateway import get_gateway_client, send_imessage, run_imessage_send
+                        from bot.gateway.imessage import get_gateway_client, send_imessage, run_imessage_send
                         client = get_gateway_client()
                         if client:
                             result = await send_imessage(client, to=job.channel_id, message=reply)
@@ -547,8 +548,7 @@ class CronScheduler:
                         channel = self._bot.get_channel(int(job.channel_id))
                         if channel is None:
                             channel = await self._bot.fetch_channel(int(job.channel_id))
-                        for i in range(0, len(reply), 2000):
-                            await channel.send(reply[i : i + 2000])
+                        await send_chunks(channel, reply)
                         log.info("job %s delivered to channel %s (%d chars)", job.name, job.channel_id, len(reply))
                     except Exception as e:
                         log.error("job %s delivery failed: %s", job.name, e)
@@ -605,7 +605,7 @@ class CronScheduler:
                                 next_run_at: float | None = None) -> None:
         """Update job state in the active backend."""
         if use_postgres():
-            from bot.db import get_pool
+            from bot.storage.db import get_pool
             pool = await get_pool()
             async with pool.acquire() as conn:
                 if enabled is not None and not enabled:

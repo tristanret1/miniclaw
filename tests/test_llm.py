@@ -3,7 +3,7 @@
 from unittest.mock import patch, MagicMock
 
 import bot.llm as llm_mod
-from bot.session import SessionManager
+from bot.storage.session import SessionManager
 from tests.conftest import FakeProvider, make_text_stream_events
 
 

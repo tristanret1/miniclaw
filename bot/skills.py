@@ -7,12 +7,10 @@ from pathlib import Path
 
 import yaml
 
+from bot.constants import MAX_SKILL_FILE_BYTES
 from bot.logger import get_logger
 
 log = get_logger("skills")
-
-# Max SKILL.md file size (256 KB, same as openclaw)
-MAX_SKILL_FILE_BYTES = 256_000
 
 
 @dataclass

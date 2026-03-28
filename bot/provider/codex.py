@@ -4,9 +4,7 @@ import json
 import time
 from collections.abc import AsyncIterator
 
-import httpx
-
-from bot.codex_oauth import (
+from bot.oauth.codex import (
     CODEX_API_ENDPOINT,
     load_credentials,
     refresh_token,
@@ -123,17 +121,8 @@ class CodexProvider(BaseProvider):
     """OpenAI Codex provider using the Responses API with ChatGPT subscription OAuth."""
 
     def __init__(self, model: str):
+        super().__init__()
         self.model = model
-        self._http: httpx.AsyncClient | None = None
-
-    def _get_client(self) -> httpx.AsyncClient:
-        if self._http is None or self._http.is_closed:
-            self._http = httpx.AsyncClient(
-                timeout=httpx.Timeout(120, connect=10),
-                http2=True,
-                limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
-            )
-        return self._http
 
     def _get_auth(self) -> dict:
         """Get current credentials, refreshing if expired."""

@@ -12,17 +12,18 @@ from claude_agent_sdk.types import (
     ToolUseBlock,
 )
 
-from bot.config import ACP_CWD
+from bot.config import get_secrets
+from bot.constants import ACP_MAX_OUTPUT_CHARS
 from bot.logger import get_logger
 
 log = get_logger("acp")
 
-MAX_OUTPUT_CHARS = 8000
+MAX_OUTPUT_CHARS = ACP_MAX_OUTPUT_CHARS
 
 
 async def run_prompt(task: str, cwd: str | None = None, timeout: int = 300) -> str:
     """Send a coding task to Claude Code and return the result."""
-    work_dir = cwd or ACP_CWD or os.getcwd()
+    work_dir = cwd or get_secrets()["ACP_CWD"] or os.getcwd()
 
     log.info("claude_code → %s (cwd=%s)", task[:100], work_dir)
 

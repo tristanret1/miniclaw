@@ -11,7 +11,7 @@ import wave
 
 from openai import AsyncOpenAI
 
-from bot.config import OPENAI_API_KEY, STT_MODEL, STT_LANGUAGE, STT_PROMPT, VOICE_SAMPLE_RATE
+from bot.config import get_config, get_secrets
 from bot.logger import get_logger
 
 log = get_logger("stt")
@@ -22,7 +22,7 @@ _openai_client: AsyncOpenAI | None = None
 def _get_openai_client() -> AsyncOpenAI:
     global _openai_client
     if _openai_client is None:
-        _openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+        _openai_client = AsyncOpenAI(api_key=get_secrets()["OPENAI_API_KEY"])
     return _openai_client
 
 
@@ -53,7 +53,7 @@ async def transcribe(
         return ""
 
     # Skip very short audio (< 0.5s) — likely noise, not speech
-    sr = sample_rate or VOICE_SAMPLE_RATE
+    sr = sample_rate or get_config().gateway.voice.sample_rate
     min_samples = int(sr * 0.5)  # 0.5 seconds
     n_samples = len(audio_bytes) // 2  # 16-bit = 2 bytes per sample
     if n_samples < min_samples:
@@ -64,16 +64,18 @@ async def transcribe(
     wav_bytes = _pcm_to_wav(audio_bytes, sample_rate=sr)
 
     try:
+        _voice_cfg = get_config().gateway.voice
+        stt_prompt = _voice_cfg.stt_prompt or f"This audio may contain these wake words: {', '.join(_voice_cfg.wake_words)}"
         kwargs: dict = {
-            "model": model or STT_MODEL,
+            "model": model or _voice_cfg.stt_model,
             "file": ("audio.wav", wav_bytes, "audio/wav"),
             "temperature": 0,  # conservative transcription, reduce hallucinations
         }
-        lang = language or STT_LANGUAGE
+        lang = language or _voice_cfg.stt_language
         if lang:
             kwargs["language"] = lang
-        if STT_PROMPT:
-            kwargs["prompt"] = STT_PROMPT
+        if stt_prompt:
+            kwargs["prompt"] = stt_prompt
         transcription = await c.audio.transcriptions.create(**kwargs)
         text = transcription.text.strip()
         if text:
