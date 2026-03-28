@@ -90,7 +90,7 @@ def memory_db(tmp_path, monkeypatch):
 @pytest.fixture
 def fake_credentials(tmp_path, monkeypatch):
     """Write fake OAuth credentials to a temp path."""
-    import bot.oauth as oauth_mod
+    import bot.oauth.anthropic as oauth_mod
     creds = {
         "access_token": "fake-access-token",
         "refresh_token": "fake-refresh-token",

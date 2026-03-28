@@ -20,7 +20,7 @@ from bot.constants import (
 )
 from bot.logger import get_logger
 from bot.message import Message
-from bot.oauth import load_credentials, refresh_token
+from bot.oauth.anthropic import load_credentials, refresh_token
 from bot.provider.base import BaseProvider
 
 log = get_logger("anthropic")

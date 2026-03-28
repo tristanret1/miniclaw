@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 
 import httpx
 
-from bot.codex_oauth import (
+from bot.oauth.codex import (
     CODEX_API_ENDPOINT,
     load_credentials,
     refresh_token,

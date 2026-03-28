@@ -11,14 +11,14 @@ DISCORD_DEV_URL = "https://discord.com/developers/applications"
 
 def setup_claude():
     print("\n── Claude Authorization (uses your Claude subscription) ──\n")
-    from bot.oauth import authorize
+    from bot.oauth.anthropic import authorize
     authorize()
     print("Claude setup complete!")
 
 
 def setup_codex():
     print("\n── Codex Authorization (uses your ChatGPT subscription) ──")
-    from bot.codex_oauth import authorize_headless
+    from bot.oauth.codex import authorize_headless
     authorize_headless()
     print("Codex setup complete!")
 
