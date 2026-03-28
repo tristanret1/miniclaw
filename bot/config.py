@@ -1,36 +1,82 @@
+"""Configuration loader.
+
+Two sections:
+
+SECTION A — New API (lazy loading from config.yaml + .env secrets)
+  get_config()    → AppConfig (parsed from config.yaml, cached)
+  get_secrets()   → dict of sensitive values from .env
+  reset_config()  → clear cached AppConfig (used in tests)
+  build_system_prompt() / get_system_prompt() / get_loaded_skills()
+
+SECTION B — Backward-compatible module-level names
+  All existing os.getenv() names are preserved so that:
+      from bot.config import DISCORD_BOT_TOKEN, CLAUDE_MODEL, ...
+  continues to work without changes. These are loaded at import time from .env.
+  TODO: migrate callers to get_config() / get_secrets() and remove this section.
+"""
+
+from __future__ import annotations
+
 import os
 from pathlib import Path
+
+import yaml
 from dotenv import load_dotenv
 
-load_dotenv()
+# ── Project paths ─────────────────────────────────────────────────────────────
 
-DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
-CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
-CODEX_MODEL = os.getenv("CODEX_MODEL", "gpt-5.3-codex")
-PROVIDER = os.getenv("PROVIDER", "anthropic")  # "anthropic" or "codex"
-MAX_HISTORY = int(os.getenv("MAX_HISTORY", "50"))
-TOOLS_ENABLED = os.getenv("TOOLS_ENABLED", "false").lower() in ("true", "1", "yes")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")  # for embedding (text-embedding-3-small)
+PROJECT_ROOT = Path(__file__).parent.parent
 
-# PostgreSQL (Neon) — when set, all storage uses PostgreSQL instead of SQLite
-DATABASE_URL = os.getenv("DATABASE_URL", "")
+# ── SECTION A: New lazy API ───────────────────────────────────────────────────
 
-# Claude Code integration (via claude-agent-sdk)
-ACP_CWD = os.getenv("ACP_CWD", "")  # default working directory for Claude Code tasks
+from bot.config_schema import AppConfig  # noqa: E402
 
-# GitHub token for gh CLI and git push
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+_config: AppConfig | None = None
+_system_prompt: str | None = None
 
-# Twilio (for phone_call tool)
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
-TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "")  # E.164 format, e.g. +14155551234
-
-WORKSPACE_DIR = Path(__file__).parent.parent / "workspace"
-SKILLS_DIR = Path(__file__).parent.parent / "skills"
-
-# Bootstrap files injected into system prompt, same order as openclaw
 _BOOTSTRAP_FILES = ["SOUL.md", "IDENTITY.md", "USER.md", "MEMORY.md"]
+
+
+def get_config(config_path: Path | None = None) -> AppConfig:
+    """Return the cached AppConfig, loading config.yaml on first call."""
+    global _config
+    if _config is not None:
+        return _config
+    path = config_path or PROJECT_ROOT / "config.yaml"
+    if path.exists():
+        with open(path) as f:
+            raw = yaml.safe_load(f) or {}
+    else:
+        raw = {}
+    _config = AppConfig.from_dict(raw)
+    return _config
+
+
+def reset_config() -> None:
+    """Clear the cached AppConfig and system prompt (useful in tests)."""
+    global _config, _system_prompt
+    _config = None
+    _system_prompt = None
+
+
+def get_secrets() -> dict:
+    """Return all sensitive config values loaded from .env."""
+    load_dotenv(PROJECT_ROOT / ".env")
+    return {
+        "DISCORD_BOT_TOKEN": os.getenv("DISCORD_BOT_TOKEN", ""),
+        "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
+        "DATABASE_URL": os.getenv("DATABASE_URL", ""),
+        "GITHUB_TOKEN": os.getenv("GITHUB_TOKEN", ""),
+        "ACP_CWD": os.getenv("ACP_CWD", ""),
+        "TWILIO_ACCOUNT_SID": os.getenv("TWILIO_ACCOUNT_SID", ""),
+        "TWILIO_AUTH_TOKEN": os.getenv("TWILIO_AUTH_TOKEN", ""),
+        "TWILIO_FROM_NUMBER": os.getenv("TWILIO_FROM_NUMBER", ""),
+        "VOLCENGINE_TTS_API_KEY": os.getenv("VOLCENGINE_TTS_API_KEY", ""),
+        "GOOGLE_CALENDAR_CLIENT_ID": os.getenv("GOOGLE_CALENDAR_CLIENT_ID", ""),
+        "GOOGLE_CALENDAR_CLIENT_SECRET": os.getenv("GOOGLE_CALENDAR_CLIENT_SECRET", ""),
+        "GOOGLE_CALENDAR_LIFE_ID": os.getenv("GOOGLE_CALENDAR_LIFE_ID", ""),
+        "GOOGLE_CALENDAR_WORK_ID": os.getenv("GOOGLE_CALENDAR_WORK_ID", ""),
+    }
 
 
 def build_system_prompt(workspace_dir: Path | None = None) -> str:
@@ -58,59 +104,98 @@ def build_system_prompt(workspace_dir: Path | None = None) -> str:
     return "\n\n---\n\n".join(parts)
 
 
+def get_system_prompt(workspace_dir: Path | None = None) -> str:
+    """Return the cached system prompt, building it on first call."""
+    global _system_prompt
+    if _system_prompt is None:
+        _system_prompt = build_system_prompt(workspace_dir)
+    return _system_prompt
+
+
 def get_loaded_skills():
-    """Return loaded skills (cached after first system prompt build)."""
+    """Return loaded skills (re-reads from disk each call)."""
     from bot.skills import load_skills
     return load_skills(SKILLS_DIR)
 
 
-SYSTEM_PROMPT = build_system_prompt()
+# ── SECTION B: Backward-compatible module-level names ────────────────────────
+# These are kept so existing `from bot.config import FOO` imports keep working.
+# TODO: migrate callers to get_config() / get_secrets() and remove this section.
+
+load_dotenv()
+
+DISCORD_BOT_TOKEN: str = os.environ.get("DISCORD_BOT_TOKEN", "")
+CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
+CODEX_MODEL: str = os.getenv("CODEX_MODEL", "gpt-5.3-codex")
+PROVIDER: str = os.getenv("PROVIDER", "anthropic")
+MAX_HISTORY: int = int(os.getenv("MAX_HISTORY", "50"))
+TOOLS_ENABLED: bool = os.getenv("TOOLS_ENABLED", "false").lower() in ("true", "1", "yes")
+OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+
+# PostgreSQL (Neon) — when set, all storage uses PostgreSQL instead of SQLite
+DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+
+# Claude Code integration (via claude-agent-sdk)
+ACP_CWD: str = os.getenv("ACP_CWD", "")
+
+# GitHub token for gh CLI and git push
+GITHUB_TOKEN: str = os.getenv("GITHUB_TOKEN", "")
+
+# Twilio (for phone_call tool)
+TWILIO_ACCOUNT_SID: str = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN: str = os.getenv("TWILIO_AUTH_TOKEN", "")
+TWILIO_FROM_NUMBER: str = os.getenv("TWILIO_FROM_NUMBER", "")
+
+WORKSPACE_DIR: Path = PROJECT_ROOT / "workspace"
+SKILLS_DIR: Path = PROJECT_ROOT / "skills"
+
+SYSTEM_PROMPT: str = build_system_prompt()
 
 # Health tracking
-HEALTH_TRACKING_ENABLED = os.getenv("HEALTH_TRACKING_ENABLED", "true").lower() in ("true", "1", "yes")
+HEALTH_TRACKING_ENABLED: bool = os.getenv("HEALTH_TRACKING_ENABLED", "true").lower() in ("true", "1", "yes")
 
 # Google Calendar integration
-GOOGLE_CALENDAR_ENABLED = os.getenv("GOOGLE_CALENDAR_ENABLED", "false").lower() in ("true", "1", "yes")
-GOOGLE_CALENDAR_CLIENT_ID = os.getenv("GOOGLE_CALENDAR_CLIENT_ID", "")
-GOOGLE_CALENDAR_CLIENT_SECRET = os.getenv("GOOGLE_CALENDAR_CLIENT_SECRET", "")
-GOOGLE_CALENDAR_LIFE_ID = os.getenv("GOOGLE_CALENDAR_LIFE_ID", "")  # personal calendar ID
-GOOGLE_CALENDAR_WORK_ID = os.getenv("GOOGLE_CALENDAR_WORK_ID", "")  # work calendar ID (read-only)
+GOOGLE_CALENDAR_ENABLED: bool = os.getenv("GOOGLE_CALENDAR_ENABLED", "false").lower() in ("true", "1", "yes")
+GOOGLE_CALENDAR_CLIENT_ID: str = os.getenv("GOOGLE_CALENDAR_CLIENT_ID", "")
+GOOGLE_CALENDAR_CLIENT_SECRET: str = os.getenv("GOOGLE_CALENDAR_CLIENT_SECRET", "")
+GOOGLE_CALENDAR_LIFE_ID: str = os.getenv("GOOGLE_CALENDAR_LIFE_ID", "")
+GOOGLE_CALENDAR_WORK_ID: str = os.getenv("GOOGLE_CALENDAR_WORK_ID", "")
 
 # Cron scheduler
-CRON_ENABLED = os.getenv("CRON_ENABLED", "true").lower() in ("true", "1", "yes")
-CRON_TIMEZONE = os.getenv("CRON_TIMEZONE", "America/Vancouver")
-CRON_MAX_CONCURRENT = int(os.getenv("CRON_MAX_CONCURRENT", "5"))
+CRON_ENABLED: bool = os.getenv("CRON_ENABLED", "true").lower() in ("true", "1", "yes")
+CRON_TIMEZONE: str = os.getenv("CRON_TIMEZONE", "America/Vancouver")
+CRON_MAX_CONCURRENT: int = int(os.getenv("CRON_MAX_CONCURRENT", "5"))
 
 # SMS gateway (Twilio inbound webhook)
-SMS_ENABLED = os.getenv("SMS_ENABLED", "false").lower() in ("true", "1", "yes")
-SMS_WEBHOOK_PORT = int(os.getenv("SMS_WEBHOOK_PORT", "8080"))
-SMS_WEBHOOK_URL = os.getenv("SMS_WEBHOOK_URL", "")  # public URL for Twilio signature validation
+SMS_ENABLED: bool = os.getenv("SMS_ENABLED", "false").lower() in ("true", "1", "yes")
+SMS_WEBHOOK_PORT: int = int(os.getenv("SMS_WEBHOOK_PORT", "8080"))
+SMS_WEBHOOK_URL: str = os.getenv("SMS_WEBHOOK_URL", "")
 
 # iMessage gateway (via imsg CLI)
-IMESSAGE_ENABLED = os.getenv("IMESSAGE_ENABLED", "false").lower() in ("true", "1", "yes")
-IMESSAGE_CLI_PATH = os.getenv("IMESSAGE_CLI_PATH", "imsg")  # path to imsg binary
-IMESSAGE_DB_PATH = os.getenv("IMESSAGE_DB_PATH", "")  # path to Messages/chat.db (optional)
-IMESSAGE_ALLOW_FROM = [s.strip() for s in os.getenv("IMESSAGE_ALLOW_FROM", "").split(",") if s.strip()]
-IMESSAGE_SERVICE = os.getenv("IMESSAGE_SERVICE", "auto")  # "imessage", "sms", or "auto"
+IMESSAGE_ENABLED: bool = os.getenv("IMESSAGE_ENABLED", "false").lower() in ("true", "1", "yes")
+IMESSAGE_CLI_PATH: str = os.getenv("IMESSAGE_CLI_PATH", "imsg")
+IMESSAGE_DB_PATH: str = os.getenv("IMESSAGE_DB_PATH", "")
+IMESSAGE_ALLOW_FROM: list[str] = [s.strip() for s in os.getenv("IMESSAGE_ALLOW_FROM", "").split(",") if s.strip()]
+IMESSAGE_SERVICE: str = os.getenv("IMESSAGE_SERVICE", "auto")
 
 # Voice gateway (local microphone → STT → LLM → TTS → speaker)
-VOICE_ENABLED = os.getenv("VOICE_ENABLED", "false").lower() in ("true", "1", "yes")
-WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "小圆, 小方").split(",") if w.strip()]
-TTS_PROVIDER = os.getenv("TTS_PROVIDER", "volcengine")  # "volcengine", "openai", or "edge"
-TTS_VOICE = os.getenv("TTS_VOICE", "cedar")  # OpenAI voice name
-TTS_MODEL = os.getenv("TTS_MODEL", "gpt-4o-mini-tts")  # OpenAI TTS model
-TTS_SPEED = float(os.getenv("TTS_SPEED", "1.2"))  # speech speed (0.25-4.0, default 1.2)
+VOICE_ENABLED: bool = os.getenv("VOICE_ENABLED", "false").lower() in ("true", "1", "yes")
+WAKE_WORDS: list[str] = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "小圆, 小方").split(",") if w.strip()]
+TTS_PROVIDER: str = os.getenv("TTS_PROVIDER", "volcengine")
+TTS_VOICE: str = os.getenv("TTS_VOICE", "cedar")
+TTS_MODEL: str = os.getenv("TTS_MODEL", "gpt-4o-mini-tts")
+TTS_SPEED: float = float(os.getenv("TTS_SPEED", "1.2"))
 
 # Volcengine TTS (火山引擎 / 豆包语音)
-VOLCENGINE_TTS_API_KEY = os.getenv("VOLCENGINE_TTS_API_KEY", "")
-VOLCENGINE_TTS_RESOURCE_ID = os.getenv("VOLCENGINE_TTS_RESOURCE_ID", "volc.service_type.10029")
-VOLCENGINE_TTS_SPEAKER = os.getenv("VOLCENGINE_TTS_SPEAKER", "zh_male_beijingxiaoye_emo_v2_mars_bigtts")
-STT_MODEL = os.getenv("STT_MODEL", "gpt-4o-transcribe")  # OpenAI STT model
-STT_LANGUAGE = os.getenv("STT_LANGUAGE", "zh")  # language hint for STT
-STT_PROMPT = os.getenv("STT_PROMPT", "") or f"This audio may contain these wake words: {', '.join(WAKE_WORDS)}"
-VOICE_SILENCE_THRESHOLD = int(os.getenv("VOICE_SILENCE_THRESHOLD", "500"))  # RMS threshold
-VOICE_SILENCE_DURATION = float(os.getenv("VOICE_SILENCE_DURATION", "1.5"))  # seconds of silence to segment
-VOICE_SAMPLE_RATE = int(os.getenv("VOICE_SAMPLE_RATE", "16000"))  # Hz
+VOLCENGINE_TTS_API_KEY: str = os.getenv("VOLCENGINE_TTS_API_KEY", "")
+VOLCENGINE_TTS_RESOURCE_ID: str = os.getenv("VOLCENGINE_TTS_RESOURCE_ID", "volc.service_type.10029")
+VOLCENGINE_TTS_SPEAKER: str = os.getenv("VOLCENGINE_TTS_SPEAKER", "zh_male_beijingxiaoye_emo_v2_mars_bigtts")
+STT_MODEL: str = os.getenv("STT_MODEL", "gpt-4o-transcribe")
+STT_LANGUAGE: str = os.getenv("STT_LANGUAGE", "zh")
+STT_PROMPT: str = os.getenv("STT_PROMPT", "") or f"This audio may contain these wake words: {', '.join(WAKE_WORDS)}"
+VOICE_SILENCE_THRESHOLD: int = int(os.getenv("VOICE_SILENCE_THRESHOLD", "500"))
+VOICE_SILENCE_DURATION: float = float(os.getenv("VOICE_SILENCE_DURATION", "1.5"))
+VOICE_SAMPLE_RATE: int = int(os.getenv("VOICE_SAMPLE_RATE", "16000"))
 
 # DM whitelist — only these user IDs can DM the bot (empty = deny all DMs)
 ALLOWED_DM_USERS: set[int] = {
@@ -118,17 +203,17 @@ ALLOWED_DM_USERS: set[int] = {
 }
 
 # Auto-reply settings
-AUTO_REPLY_ENABLED = os.getenv("AUTO_REPLY_ENABLED", "false").lower() in ("true", "1", "yes")
-AUTO_REPLY_CHANNELS = os.getenv("AUTO_REPLY_CHANNELS", "").split(",")  # Channel IDs where auto-reply is allowed
-AUTO_REPLY_CHANCE = float(os.getenv("AUTO_REPLY_CHANCE", "0.1"))  # 0.1 = 10% chance to reply
-AUTO_REPLY_KEYWORDS = os.getenv("AUTO_REPLY_KEYWORDS", "").split(",")  # Keywords that trigger auto-reply
+AUTO_REPLY_ENABLED: bool = os.getenv("AUTO_REPLY_ENABLED", "false").lower() in ("true", "1", "yes")
+AUTO_REPLY_CHANNELS: list[str] = os.getenv("AUTO_REPLY_CHANNELS", "").split(",")
+AUTO_REPLY_CHANCE: float = float(os.getenv("AUTO_REPLY_CHANCE", "0.1"))
+AUTO_REPLY_KEYWORDS: list[str] = os.getenv("AUTO_REPLY_KEYWORDS", "").split(",")
 
 # Heartbeat settings
-HEARTBEAT_ENABLED = os.getenv("HEARTBEAT_ENABLED", "false").lower() in ("true", "1", "yes")
-HEARTBEAT_INTERVAL = os.getenv("HEARTBEAT_INTERVAL", "30m")  # e.g. "30m", "1h", "2h30m"
-HEARTBEAT_CHANNEL_ID = os.getenv("HEARTBEAT_CHANNEL_ID", "")  # Discord channel for heartbeat delivery
-HEARTBEAT_ACTIVE_START = os.getenv("HEARTBEAT_ACTIVE_START", "")  # "HH:MM" (24h), inclusive
-HEARTBEAT_ACTIVE_END = os.getenv("HEARTBEAT_ACTIVE_END", "")  # "HH:MM" (24h), exclusive
-HEARTBEAT_ACTIVE_TZ = os.getenv("HEARTBEAT_ACTIVE_TZ", "")  # IANA timezone (empty = local)
-HEARTBEAT_ACK_MAX_CHARS = int(os.getenv("HEARTBEAT_ACK_MAX_CHARS", "300"))
-HEARTBEAT_ISOLATED = os.getenv("HEARTBEAT_ISOLATED", "true").lower() in ("true", "1", "yes")
+HEARTBEAT_ENABLED: bool = os.getenv("HEARTBEAT_ENABLED", "false").lower() in ("true", "1", "yes")
+HEARTBEAT_INTERVAL: str = os.getenv("HEARTBEAT_INTERVAL", "30m")
+HEARTBEAT_CHANNEL_ID: str = os.getenv("HEARTBEAT_CHANNEL_ID", "")
+HEARTBEAT_ACTIVE_START: str = os.getenv("HEARTBEAT_ACTIVE_START", "")
+HEARTBEAT_ACTIVE_END: str = os.getenv("HEARTBEAT_ACTIVE_END", "")
+HEARTBEAT_ACTIVE_TZ: str = os.getenv("HEARTBEAT_ACTIVE_TZ", "")
+HEARTBEAT_ACK_MAX_CHARS: int = int(os.getenv("HEARTBEAT_ACK_MAX_CHARS", "300"))
+HEARTBEAT_ISOLATED: bool = os.getenv("HEARTBEAT_ISOLATED", "true").lower() in ("true", "1", "yes")

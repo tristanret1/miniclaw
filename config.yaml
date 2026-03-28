@@ -1,0 +1,89 @@
+llm:
+  provider: anthropic
+  anthropic:
+    model: claude-sonnet-4-20250514
+    api_url: https://api.anthropic.com/v1/messages
+  codex:
+    model: gpt-5.3-codex
+    api_url: https://chatgpt.com/backend-api/codex/responses
+  max_history: 50
+  max_tokens: 4096
+  tools_enabled: false
+
+discord:
+  greeting_channel_id: ""
+  allowed_dm_users: []
+  auto_reply:
+    enabled: false
+    channels: []
+    chance: 0.1
+    keywords: []
+  stream:
+    flush_interval: 0.1
+    flush_chars: 50
+
+gateway:
+  voice:
+    enabled: false
+    sample_rate: 16000
+    silence_threshold: 500
+    silence_duration: 1.5
+    conversation_timeout: 30.0
+    playback_cooldown: 0.5
+    wake_words: ["小圆", "小方"]
+    tts_provider: volcengine
+    tts_voice: cedar
+    tts_model: gpt-4o-mini-tts
+    tts_speed: 1.2
+    stt_model: gpt-4o-transcribe
+    stt_language: zh
+    stt_prompt: ""
+  volcengine:
+    tts_resource_id: "volc.service_type.10029"
+    tts_speaker: "zh_male_beijingxiaoye_emo_v2_mars_bigtts"
+  sms:
+    enabled: false
+    webhook_port: 8080
+    webhook_url: ""
+  imessage:
+    enabled: false
+    cli_path: imsg
+    db_path: ""
+    allow_from: []
+    service: auto
+  heartbeat:
+    enabled: false
+    interval: "30m"
+    channel_id: ""
+    active_start: ""
+    active_end: ""
+    active_tz: ""
+    ack_max_chars: 300
+    isolated: true
+
+storage:
+  backend: sqlite
+  sqlite:
+    sessions_path: workspace/sessions.db
+    memory_path: workspace/memory/memory.db
+
+services:
+  google_calendar:
+    enabled: false
+    life_calendar_id: ""
+    work_calendar_id: ""
+  cron:
+    enabled: true
+    timezone: America/Vancouver
+    max_concurrent: 5
+    tick_interval_min: 2.0
+    tick_interval_max: 60.0
+    backoff: [30, 60, 300, 900, 3600]
+  health:
+    enabled: true
+  timeouts:
+    http_read: 120
+    http_connect: 10
+    exec_default: 30
+    exec_max: 120
+    acp_max: 600
