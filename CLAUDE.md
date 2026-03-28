@@ -14,54 +14,120 @@ miniclaw/
 ├── setup.py                         # Interactive first-time setup (OAuth + Discord token)
 ├── pyproject.toml                   # Project metadata, pytest config, coverage settings
 ├── requirements.txt                 # Runtime dependencies
-├── .env                             # Runtime config (gitignored)
-├── .env.example                     # Config template with all supported variables
+├── config.yaml                      # Non-sensitive config (models, features, timeouts)
+├── .env                             # Secrets only (tokens, API keys — gitignored)
+├── .env.example                     # Secrets template
 ├── .credentials.json                # Anthropic OAuth tokens (gitignored, 0o600 perms)
 ├── .codex_credentials.json          # Codex OAuth tokens (gitignored, 0o600 perms)
 │
 ├── bot/                             # Core application modules
-│   ├── config.py                    # Env loading + system prompt assembly
+│   ├── config.py                    # Config loader: config.yaml + .env → AppConfig singleton
+│   ├── config_schema.py             # Frozen dataclass definitions for AppConfig
+│   ├── constants.py                 # Non-configurable platform/protocol constants
 │   ├── client.py                    # Discord client, event handlers, streaming display
 │   ├── llm.py                       # Unified LLM entry point: stream() / reply()
 │   ├── processor.py                 # Stream processor: tool loop, content accumulation, auto-flush
 │   ├── message.py                   # Unified message types (Message, Content, ContentBlock)
-│   ├── session.py                   # Session management: in-memory cache + SQLite persistence
+│   ├── acp.py                       # Claude Code integration (claude-agent-sdk)
+│   ├── commands.py                  # Discord slash commands (/autoreply)
+│   ├── logger.py                    # Logging config (stdout + rotating file)
+│   ├── agent.py                     # Agent loop helpers
+│   ├── skills.py                    # Bot skill registry
+│   ├── cron.py                      # Cron job scheduler
+│   ├── health.py                    # Health tracking
+│   ├── stt.py                       # Speech-to-text (OpenAI Whisper)
+│   ├── tts.py                       # Text-to-speech (OpenAI / Volcengine)
+│   ├── wake.py                      # Wake word detection
+│   ├── audio_engine.py              # Audio I/O engine (AVAudioEngine / PyAudio)
+│   ├── google_oauth.py              # Google OAuth 2.0 flow
+│   │
 │   ├── provider/                    # LLM provider abstraction layer
 │   │   ├── __init__.py              # Provider registry + get_provider() factory
 │   │   ├── base.py                  # BaseProvider ABC (stream, call, refresh_auth)
 │   │   ├── anthropic.py             # Anthropic: OAuth, httpx, SSE streaming
 │   │   ├── codex.py                 # Codex: OpenAI Responses API, OAuth, SSE streaming
-│   │   └── transform.py            # Message sanitization middleware per provider
-│   ├── tools.py                     # Tool definitions + handle_tool_call() dispatch
-│   ├── codex_oauth.py               # Codex OAuth 2.0 device auth (headless)
-│   ├── memory.py                    # SQLite + FTS5/BM25 + optional vector hybrid search
-│   ├── oauth.py                     # OAuth 2.0 PKCE flow, credential save/load/refresh
-│   ├── acp.py                       # Claude Code integration (claude-agent-sdk)
-│   ├── commands.py                  # Discord slash commands (/autoreply)
-│   └── logger.py                    # Logging config (stdout + rotating file)
+│   │   └── transform.py             # Message sanitization middleware per provider
+│   │
+│   ├── tools/                       # Tool definitions + execution handlers
+│   │   ├── __init__.py              # ALL_TOOLS registry + handle_tool_call() dispatch
+│   │   ├── exec.py                  # Shell command execution
+│   │   ├── memory_tools.py          # memory_save / memory_search tools
+│   │   ├── claude_code.py           # claude_code tool (ACP delegation)
+│   │   ├── discord_send.py          # discord_send tool
+│   │   ├── calendar.py              # Google Calendar tools
+│   │   ├── cron_tools.py            # Cron job management tools
+│   │   ├── health_tools.py          # Health tracking tools
+│   │   ├── imessage_tools.py        # iMessage send/read tools
+│   │   ├── sms.py                   # SMS tools (Twilio)
+│   │   └── voice_tools.py           # Voice control tools
+│   │
+│   ├── gateway/                     # Non-Discord inbound/outbound gateways
+│   │   ├── __init__.py
+│   │   ├── voice.py                 # Voice: mic → STT → wake → LLM → TTS → speaker
+│   │   ├── imessage.py              # iMessage gateway (imsg CLI via JSON-RPC)
+│   │   ├── sms.py                   # Twilio SMS inbound webhook (aiohttp)
+│   │   └── heartbeat.py             # Periodic agent polling (default-silent)
+│   │
+│   ├── storage/                     # Persistence layer
+│   │   ├── __init__.py
+│   │   ├── db.py                    # DB backend factory (PostgreSQL / SQLite)
+│   │   ├── session.py               # Session management: in-memory cache + DB persistence
+│   │   └── memory.py                # SQLite + FTS5/BM25 + optional vector hybrid search
+│   │
+│   ├── oauth/                       # OAuth credential management
+│   │   ├── __init__.py
+│   │   ├── anthropic.py             # Anthropic PKCE flow, credential save/load/refresh
+│   │   └── codex.py                 # Codex device auth flow, token refresh
+│   │
+│   ├── services/                    # External service clients
+│   │   ├── __init__.py
+│   │   ├── google_calendar.py       # Google Calendar API wrapper
+│   │   └── twilio.py                # Twilio SMS/voice client
+│   │
+│   └── utils/                       # Shared utilities
+│       ├── __init__.py
+│       ├── discord.py               # Discord message chunking helpers
+│       └── session_keys.py          # Centralized session key generation
 │
 ├── workspace/                       # Bot personality + persistent data
 │   ├── SOUL.md                      # Behavior principles, language preferences
 │   ├── IDENTITY.md                  # Agent name, emoji, vibe
 │   ├── memory/                      # Memory database + daily Markdown logs (gitignored)
 │   │   ├── memory.db                # SQLite + FTS5 memory database
-│   │   └── YYYY-MM-DD.md           # Daily memory logs (human-readable)
+│   │   └── YYYY-MM-DD.md            # Daily memory logs (human-readable)
 │   └── sessions.db                  # Conversation history (gitignored)
 │
 └── tests/                           # pytest test suite
     ├── conftest.py                  # Shared fixtures (FakeProvider, temp DBs, fake credentials)
     ├── test_message.py              # message.py tests
-    ├── test_session.py              # session.py tests
-    ├── test_memory.py               # memory.py tests
     ├── test_processor.py            # processor.py tests
     ├── test_llm.py                  # llm.py tests
-    ├── test_tools.py                # tools.py tests
-    ├── test_oauth.py                # oauth.py tests
     ├── test_client.py               # client.py tests
-    └── provider/
-        ├── test_transform.py        # transform.py tests
-        ├── test_anthropic.py        # anthropic.py tests
-        └── test_registry.py         # provider registry tests
+    ├── provider/
+    │   ├── test_transform.py        # transform.py tests
+    │   ├── test_anthropic.py        # anthropic.py tests
+    │   ├── test_codex.py            # codex.py tests
+    │   └── test_registry.py         # provider registry tests
+    ├── storage/
+    │   ├── test_session.py          # session.py tests
+    │   ├── test_memory.py           # memory.py tests
+    │   └── test_cron.py             # cron.py tests
+    ├── gateway/
+    │   ├── test_voice.py            # voice.py tests
+    │   ├── test_imessage.py         # imessage.py tests
+    │   ├── test_sms.py              # sms.py tests
+    │   ├── test_heartbeat.py        # heartbeat.py tests
+    │   ├── test_stt.py              # stt.py tests
+    │   ├── test_tts.py              # tts.py tests
+    │   └── test_wake.py             # wake.py tests
+    ├── oauth/
+    │   └── test_oauth.py            # oauth/ tests
+    ├── services/
+    │   ├── test_google_calendar.py  # google_calendar.py tests
+    │   ├── test_health.py           # health.py tests
+    │   └── test_skills.py           # skills.py tests
+    └── tools/
+        └── test_tools.py            # tools/ tests
 ```
 
 ---
@@ -110,19 +176,20 @@ miniclaw/
                             │
               ┌─────────────┼─────────────┐
               │             │             │
-    ┌─────────▼───┐  ┌─────▼──────┐  ┌───▼──────────┐
-    │ provider/   │  │ session.py │  │  tools.py    │
-    │ anthropic   │  │            │  │              │
-    │  .py        │  │ SessionMgr │  │ exec         │
-    │             │  │  ┌──────┐  │  │ memory_save  │
-    │ HTTP POST   │  │  │cache │  │  │ memory_search│
-    │ SSE parse   │  │  │ dict │  │  │ claude_code  │
-    │ 401 refresh │  │  └──┬───┘  │  │ discord_send │
-    └─────────────┘  │     │      │  └──────────────┘
-                     │  ┌──▼───┐  │
-                     │  │SQLite│  │  workspace/sessions.db
-                     │  └──────┘  │
-                     └────────────┘
+    ┌─────────▼───┐  ┌─────▼──────────┐  ┌───▼──────────┐
+    │ provider/   │  │ storage/       │  │  tools/      │
+    │ anthropic   │  │ session.py     │  │              │
+    │  .py        │  │                │  │ exec         │
+    │             │  │ SessionMgr     │  │ memory_save  │
+    │ HTTP POST   │  │  ┌──────┐      │  │ memory_search│
+    │ SSE parse   │  │  │cache │      │  │ claude_code  │
+    │ 401 refresh │  │  │ dict │      │  │ discord_send │
+    └─────────────┘  │  └──┬───┘      │  └──────────────┘
+                     │     │          │
+                     │  ┌──▼───┐      │
+                     │  │SQLite│      │  workspace/sessions.db
+                     │  └──────┘      │
+                     └────────────────┘
 ```
 
 ---
@@ -137,8 +204,9 @@ main.py
   ├─ Check .env + .credentials.json exist → if not, run setup.py
   │
   ├─ import bot.config
-  │   ├─ load_dotenv() → read .env
-  │   ├─ Read all env vars (DISCORD_BOT_TOKEN, CLAUDE_MODEL, MAX_HISTORY, ...)
+  │   ├─ load_dotenv() → read .env (secrets)
+  │   ├─ AppConfig.load("config.yaml") → frozen dataclass (config_schema.py)
+  │   │   └─ Merges YAML defaults with env overrides where applicable
   │   ├─ WORKSPACE_DIR = project_root / "workspace"
   │   └─ SYSTEM_PROMPT = build_system_prompt()
   │       ├─ Read workspace/SOUL.md
@@ -533,23 +601,42 @@ _send_streaming(message, session_key, user_content)
 
 ## Configuration
 
-### Environment Variables (`.env`)
+Configuration is split between two files:
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DISCORD_BOT_TOKEN` | **yes** | — | Discord bot token |
-| `PROVIDER` | no | `anthropic` | LLM provider: `anthropic` or `codex` |
-| `CLAUDE_MODEL` | no | `claude-sonnet-4-20250514` | Claude model ID (when PROVIDER=anthropic) |
-| `CODEX_MODEL` | no | `gpt-5.3-codex` | Codex model ID (when PROVIDER=codex) |
-| `MAX_HISTORY` | no | `20` | Max conversation turns kept in context |
-| `TOOLS_ENABLED` | no | `true` | Enable tool use |
-| `GITHUB_TOKEN` | no | — | GitHub PAT for gh CLI in exec tool |
-| `OPENAI_API_KEY` | no | — | Enables vector embeddings for memory search |
-| `ACP_CWD` | no | — | Default working directory for claude_code tool |
-| `AUTO_REPLY_ENABLED` | no | `false` | Enable random auto-reply in guilds |
-| `AUTO_REPLY_CHANNELS` | no | — | Comma-separated channel IDs |
-| `AUTO_REPLY_CHANCE` | no | `0.1` | Reply probability (0.0–1.0) |
-| `AUTO_REPLY_KEYWORDS` | no | — | Comma-separated trigger keywords |
+- **`config.yaml`** — non-sensitive settings (models, feature flags, timeouts, gateway options). Checked into git.
+- **`.env`** — secrets only (tokens, API keys). Gitignored.
+
+### config.yaml sections
+
+| Section | Key settings |
+|---------|-------------|
+| `llm` | `provider`, `anthropic.model`, `codex.model`, `max_history`, `max_tokens`, `tools_enabled` |
+| `discord` | `greeting_channel_id`, `allowed_dm_users`, `auto_reply.*`, `stream.*` |
+| `gateway.voice` | `enabled`, wake words, STT/TTS provider + model, audio thresholds |
+| `gateway.sms` | `enabled`, `webhook_port`, `webhook_url` |
+| `gateway.imessage` | `enabled`, `cli_path`, `allow_from` |
+| `gateway.heartbeat` | `enabled`, `interval`, `channel_id`, active hours |
+| `storage` | `backend` (`sqlite`/`postgres`), SQLite paths |
+| `services.google_calendar` | `enabled`, calendar IDs |
+| `services.cron` | `enabled`, timezone, concurrency, tick interval |
+| `services.health` | `enabled` |
+| `services.timeouts` | `http_read`, `http_connect`, `exec_default`, `exec_max`, `acp_max` |
+
+### Secrets (`.env`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DISCORD_BOT_TOKEN` | **yes** | Discord bot token |
+| `OPENAI_API_KEY` | no | Enables OpenAI STT/TTS + vector embeddings for memory search |
+| `GITHUB_TOKEN` | no | GitHub PAT for gh CLI in exec tool |
+| `ACP_CWD` | no | Default working directory for claude_code tool |
+| `DATABASE_URL` | no | PostgreSQL connection string (enables Postgres backend) |
+| `TWILIO_ACCOUNT_SID` | no | Twilio account SID (SMS gateway) |
+| `TWILIO_AUTH_TOKEN` | no | Twilio auth token |
+| `TWILIO_FROM_NUMBER` | no | Twilio outbound phone number |
+| `VOLCENGINE_APP_ID` | no | Volcengine TTS app ID |
+| `VOLCENGINE_TOKEN` | no | Volcengine TTS token |
+| `GOOGLE_CREDENTIALS_FILE` | no | Path to Google service account credentials |
 
 ### System Prompt Assembly
 
