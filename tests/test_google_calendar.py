@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from bot.google_calendar import (
+from bot.services.google_calendar import (
     _build_service,
     _parse_event,
     format_events,
@@ -120,7 +120,7 @@ class TestFormatEvents:
 # ── list_events (mocked) ──────────────────────────────────────────────────
 
 class TestListEvents:
-    @patch("bot.google_calendar._build_service")
+    @patch("bot.services.google_calendar._build_service")
     def test_list_both_calendars(self, mock_build):
         mock_service = MagicMock()
         mock_build.return_value = mock_service
@@ -144,7 +144,7 @@ class TestListEvents:
         # Should be sorted: all-day first (date string < dateTime string)
         assert result[0]["source_calendar"] in ("Life", "Work")
 
-    @patch("bot.google_calendar._build_service")
+    @patch("bot.services.google_calendar._build_service")
     def test_list_single_calendar(self, mock_build):
         mock_service = MagicMock()
         mock_build.return_value = mock_service
@@ -161,7 +161,7 @@ class TestListEvents:
         assert len(result) == 1
         assert result[0]["source_calendar"] == "Work"
 
-    @patch("bot.google_calendar._build_service")
+    @patch("bot.services.google_calendar._build_service")
     def test_list_empty_results(self, mock_build):
         mock_service = MagicMock()
         mock_build.return_value = mock_service
@@ -178,7 +178,7 @@ class TestListEvents:
 # ── create_event (mocked) ─────────────────────────────────────────────────
 
 class TestCreateEvent:
-    @patch("bot.google_calendar._build_service")
+    @patch("bot.services.google_calendar._build_service")
     def test_create_basic(self, mock_build):
         mock_service = MagicMock()
         mock_build.return_value = mock_service
@@ -195,7 +195,7 @@ class TestCreateEvent:
         assert result["title"] == "Dinner"
         assert result["source_calendar"] == "Life"
 
-    @patch("bot.google_calendar._build_service")
+    @patch("bot.services.google_calendar._build_service")
     def test_create_default_end_time(self, mock_build):
         mock_service = MagicMock()
         mock_build.return_value = mock_service
@@ -218,7 +218,7 @@ class TestCreateEvent:
 # ── update_event (mocked) ─────────────────────────────────────────────────
 
 class TestUpdateEvent:
-    @patch("bot.google_calendar._build_service")
+    @patch("bot.services.google_calendar._build_service")
     def test_update_title(self, mock_build):
         mock_service = MagicMock()
         mock_build.return_value = mock_service
@@ -237,8 +237,8 @@ class TestUpdateEvent:
 # ── delete_event (mocked) ─────────────────────────────────────────────────
 
 class TestDeleteEvent:
-    @patch("bot.google_calendar._find_reminder_job", return_value=None)
-    @patch("bot.google_calendar._build_service")
+    @patch("bot.services.google_calendar._find_reminder_job", return_value=None)
+    @patch("bot.services.google_calendar._build_service")
     async def test_delete_success(self, mock_build, mock_find):
         mock_service = MagicMock()
         mock_build.return_value = mock_service
@@ -248,13 +248,13 @@ class TestDeleteEvent:
         assert "deleted" in result.lower()
         assert "evt1" in result
 
-    @patch("bot.google_calendar._build_service")
+    @patch("bot.services.google_calendar._build_service")
     async def test_delete_with_reminder_cleanup(self, mock_build):
         mock_service = MagicMock()
         mock_build.return_value = mock_service
         mock_service.events.return_value.delete.return_value.execute.return_value = None
 
-        with patch("bot.google_calendar._find_reminder_job", return_value="job-123"):
+        with patch("bot.services.google_calendar._find_reminder_job", return_value="job-123"):
             with patch("bot.cron.delete_job", new_callable=AsyncMock) as mock_delete_job:
                 result = await delete_event(event_id="evt1")
                 mock_delete_job.assert_called_once_with("job-123")
@@ -353,7 +353,7 @@ def _real_google_env():
     """Swap in real Google env vars for integration tests, restore after."""
     import importlib
     import bot.config as cfg
-    import bot.google_calendar as gcal
+    import bot.services.google_calendar as gcal
 
     saved = {k: os.environ.get(k) for k in _google_env_keys}
     _load_real_env()

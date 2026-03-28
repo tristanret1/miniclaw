@@ -186,7 +186,7 @@ def _get_today_calendar() -> str | None:
     if not GOOGLE_CALENDAR_ENABLED:
         return None
     try:
-        from bot import google_calendar as gcal
+        from bot.services import google_calendar as gcal
         today = datetime.now().strftime("%Y-%m-%d")
         start = f"{today}T00:00:00"
         end = f"{today}T23:59:59"

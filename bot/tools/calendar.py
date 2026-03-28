@@ -98,7 +98,7 @@ GOOGLE_CALENDAR_TOOL = {
 
 async def run_google_calendar(action: str, **kwargs) -> str:
     """Handle google_calendar tool actions."""
-    from bot import google_calendar as gcal
+    from bot.services import google_calendar as gcal
 
     try:
         if action == "list":
