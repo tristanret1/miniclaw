@@ -57,7 +57,7 @@ async def main():
 
     if _voice_only:
         # Voice-only mode — skip Discord bots and other gateways
-        from bot.voice_gateway import start_voice_gateway
+        from bot.gateway.voice import start_voice_gateway
         tasks.append(start_voice_gateway(agent=voice_agent))
         print(f"Voice-only mode (agent={voice_agent.name if voice_agent else 'default'})")
     else:
@@ -69,15 +69,15 @@ async def main():
             tasks.append(bot.start(agent.discord_token))
 
         if SMS_ENABLED:
-            from bot.sms_gateway import start_sms_server
+            from bot.gateway.sms import start_sms_server
             tasks.append(start_sms_server())
 
         if IMESSAGE_ENABLED:
-            from bot.imessage_gateway import start_imessage_gateway
+            from bot.gateway.imessage import start_imessage_gateway
             tasks.append(start_imessage_gateway())
 
         if VOICE_ENABLED:
-            from bot.voice_gateway import start_voice_gateway
+            from bot.gateway.voice import start_voice_gateway
             tasks.append(start_voice_gateway(agent=voice_agent))
 
     try:

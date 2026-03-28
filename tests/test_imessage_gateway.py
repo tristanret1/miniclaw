@@ -14,7 +14,7 @@ class TestIMessageRpcClient:
 
     def test_handle_line_response(self):
         """Successful response resolves the pending future."""
-        from bot.imessage_gateway import IMessageRpcClient
+        from bot.gateway.imessage import IMessageRpcClient
 
         client = IMessageRpcClient()
         loop = asyncio.new_event_loop()
@@ -29,7 +29,7 @@ class TestIMessageRpcClient:
 
     def test_handle_line_error_response(self):
         """Error response rejects the pending future."""
-        from bot.imessage_gateway import IMessageRpcClient
+        from bot.gateway.imessage import IMessageRpcClient
 
         client = IMessageRpcClient()
         loop = asyncio.new_event_loop()
@@ -45,7 +45,7 @@ class TestIMessageRpcClient:
 
     def test_handle_line_notification(self):
         """Notifications dispatch to the callback."""
-        from bot.imessage_gateway import IMessageRpcClient
+        from bot.gateway.imessage import IMessageRpcClient
 
         client = IMessageRpcClient()
         notifications = []
@@ -58,7 +58,7 @@ class TestIMessageRpcClient:
 
     def test_handle_line_invalid_json(self):
         """Invalid JSON is silently ignored."""
-        from bot.imessage_gateway import IMessageRpcClient
+        from bot.gateway.imessage import IMessageRpcClient
 
         client = IMessageRpcClient()
         # Should not raise
@@ -66,7 +66,7 @@ class TestIMessageRpcClient:
 
     def test_handle_line_empty(self):
         """Empty line is ignored."""
-        from bot.imessage_gateway import IMessageRpcClient
+        from bot.gateway.imessage import IMessageRpcClient
 
         client = IMessageRpcClient()
         client._handle_line("")
@@ -76,43 +76,43 @@ class TestIMessageRpcClient:
 
 class TestNormalizeHandle:
     def test_phone_number(self):
-        from bot.imessage_gateway import _normalize_handle
+        from bot.gateway.imessage import _normalize_handle
         assert _normalize_handle("+14155551234") == "+14155551234"
 
     def test_email(self):
-        from bot.imessage_gateway import _normalize_handle
+        from bot.gateway.imessage import _normalize_handle
         assert _normalize_handle("User@iCloud.com") == "user@icloud.com"
 
     def test_strip_service_prefix(self):
-        from bot.imessage_gateway import _normalize_handle
+        from bot.gateway.imessage import _normalize_handle
         assert _normalize_handle("imessage:user@icloud.com") == "user@icloud.com"
 
     def test_strip_whitespace(self):
-        from bot.imessage_gateway import _normalize_handle
+        from bot.gateway.imessage import _normalize_handle
         assert _normalize_handle("  +1234  ") == "+1234"
 
 
 # ── Allowlist ───────────────────────────────────────────────────────────────
 
 class TestIsAllowed:
-    @patch("bot.imessage_gateway.IMESSAGE_ALLOW_FROM", [])
+    @patch("bot.gateway.imessage.IMESSAGE_ALLOW_FROM", [])
     def test_empty_allowlist_allows_all(self):
-        from bot.imessage_gateway import _is_allowed
+        from bot.gateway.imessage import _is_allowed
         assert _is_allowed("+14155551234") is True
 
-    @patch("bot.imessage_gateway.IMESSAGE_ALLOW_FROM", ["+14155551234", "friend@icloud.com"])
+    @patch("bot.gateway.imessage.IMESSAGE_ALLOW_FROM", ["+14155551234", "friend@icloud.com"])
     def test_allowed_phone(self):
-        from bot.imessage_gateway import _is_allowed
+        from bot.gateway.imessage import _is_allowed
         assert _is_allowed("+14155551234") is True
 
-    @patch("bot.imessage_gateway.IMESSAGE_ALLOW_FROM", ["+14155551234"])
+    @patch("bot.gateway.imessage.IMESSAGE_ALLOW_FROM", ["+14155551234"])
     def test_blocked_phone(self):
-        from bot.imessage_gateway import _is_allowed
+        from bot.gateway.imessage import _is_allowed
         assert _is_allowed("+19876543210") is False
 
-    @patch("bot.imessage_gateway.IMESSAGE_ALLOW_FROM", ["user@icloud.com"])
+    @patch("bot.gateway.imessage.IMESSAGE_ALLOW_FROM", ["user@icloud.com"])
     def test_case_insensitive(self):
-        from bot.imessage_gateway import _is_allowed
+        from bot.gateway.imessage import _is_allowed
         assert _is_allowed("User@iCloud.com") is True
 
 
@@ -122,7 +122,7 @@ class TestProcessMessage:
     @pytest.mark.asyncio
     async def test_process_message_sends_reply(self):
         """Incoming message triggers LLM reply and sends iMessage back."""
-        from bot.imessage_gateway import _process_message, IMessageRpcClient
+        from bot.gateway.imessage import _process_message, IMessageRpcClient
 
         client = MagicMock(spec=IMessageRpcClient)
         client.request = AsyncMock(return_value={"ok": "sent"})
@@ -138,7 +138,7 @@ class TestProcessMessage:
     @pytest.mark.asyncio
     async def test_process_message_empty_reply_no_send(self):
         """Empty LLM reply doesn't trigger a send."""
-        from bot.imessage_gateway import _process_message, IMessageRpcClient
+        from bot.gateway.imessage import _process_message, IMessageRpcClient
 
         client = MagicMock(spec=IMessageRpcClient)
         client.request = AsyncMock()
@@ -151,7 +151,7 @@ class TestProcessMessage:
     @pytest.mark.asyncio
     async def test_process_message_uses_session_key(self):
         """Session key is imessage:{normalized_handle}."""
-        from bot.imessage_gateway import _process_message, IMessageRpcClient
+        from bot.gateway.imessage import _process_message, IMessageRpcClient
 
         client = MagicMock(spec=IMessageRpcClient)
         client.request = AsyncMock(return_value={"ok": "sent"})
@@ -168,7 +168,7 @@ class TestProcessMessage:
 class TestSendIMessage:
     @pytest.mark.asyncio
     async def test_send_with_phone(self):
-        from bot.imessage_gateway import send_imessage, IMessageRpcClient
+        from bot.gateway.imessage import send_imessage, IMessageRpcClient
 
         client = MagicMock(spec=IMessageRpcClient)
         client.request = AsyncMock(return_value={"messageId": "abc123"})
@@ -184,7 +184,7 @@ class TestSendIMessage:
 
     @pytest.mark.asyncio
     async def test_send_with_chat_id(self):
-        from bot.imessage_gateway import send_imessage, IMessageRpcClient
+        from bot.gateway.imessage import send_imessage, IMessageRpcClient
 
         client = MagicMock(spec=IMessageRpcClient)
         client.request = AsyncMock(return_value={"ok": "sent"})
@@ -197,7 +197,7 @@ class TestSendIMessage:
 
     @pytest.mark.asyncio
     async def test_send_error(self):
-        from bot.imessage_gateway import send_imessage, IMessageRpcClient
+        from bot.gateway.imessage import send_imessage, IMessageRpcClient
 
         client = MagicMock(spec=IMessageRpcClient)
         client.request = AsyncMock(side_effect=RuntimeError("connection lost"))
@@ -217,7 +217,7 @@ class TestToolDispatch:
         mock_client = MagicMock()
         mock_client.request = AsyncMock(return_value={"ok": "sent"})
 
-        with patch("bot.imessage_gateway.get_gateway_client", return_value=mock_client):
+        with patch("bot.gateway.imessage.get_gateway_client", return_value=mock_client):
             result = await handle_tool_call("imessage_send", {
                 "to": "+14155551234",
                 "message": "Test message",
@@ -230,8 +230,8 @@ class TestToolDispatch:
         """When no gateway, tool creates a temporary client."""
         from bot.tools import handle_tool_call
 
-        with patch("bot.imessage_gateway.get_gateway_client", return_value=None), \
-             patch("bot.imessage_gateway.run_imessage_send", new_callable=AsyncMock, return_value="sent ok") as mock_send:
+        with patch("bot.gateway.imessage.get_gateway_client", return_value=None), \
+             patch("bot.gateway.imessage.run_imessage_send", new_callable=AsyncMock, return_value="sent ok") as mock_send:
             result = await handle_tool_call("imessage_send", {
                 "to": "+14155551234",
                 "message": "Test",

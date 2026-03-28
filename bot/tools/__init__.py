@@ -108,13 +108,13 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None,
             language=tool_input.get("language", "zh-CN"),
         )
     if tool_name == "imessage_send":
-        from bot.imessage_gateway import get_gateway_client, send_imessage, run_imessage_send
+        from bot.gateway.imessage import get_gateway_client, send_imessage, run_imessage_send
         client = get_gateway_client()
         if client:
             return await send_imessage(client, to=tool_input["to"], message=tool_input["message"])
         return await run_imessage_send(to=tool_input["to"], message=tool_input["message"])
     if tool_name == "voice_announce":
-        from bot.voice_gateway import announce
+        from bot.gateway.voice import announce
         return await announce(
             message=tool_input["message"],
             source=tool_input.get("source", agent_name),

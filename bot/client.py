@@ -190,7 +190,7 @@ def create_bot(agent: Agent) -> discord.Client:
         if HEARTBEAT_ENABLED and agent.name not in _heartbeat_runners:
             channel_id = HEARTBEAT_CHANNEL_ID
             if channel_id:
-                from bot.heartbeat import HeartbeatRunner
+                from bot.gateway.heartbeat import HeartbeatRunner
 
                 async def _deliver_heartbeat(text: str, _bot=bot, _cid=channel_id) -> None:
                     """Deliver heartbeat message to configured Discord channel."""

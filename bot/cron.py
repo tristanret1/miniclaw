@@ -532,7 +532,7 @@ class CronScheduler:
                         raise
                 elif job.delivery_channel == "imessage":
                     try:
-                        from bot.imessage_gateway import get_gateway_client, send_imessage, run_imessage_send
+                        from bot.gateway.imessage import get_gateway_client, send_imessage, run_imessage_send
                         client = get_gateway_client()
                         if client:
                             result = await send_imessage(client, to=job.channel_id, message=reply)

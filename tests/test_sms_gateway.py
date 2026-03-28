@@ -7,7 +7,7 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase, TestClient, TestServer
 
-from bot.sms_gateway import handle_incoming_sms, validate_twilio_signature
+from bot.gateway.sms import handle_incoming_sms, validate_twilio_signature
 
 
 # ── Signature validation ────────────────────────────────────────────────────
@@ -77,7 +77,7 @@ def sms_app():
 @pytest.mark.asyncio
 async def test_webhook_returns_empty_twiml(sms_app):
     """Webhook should return empty TwiML <Response/> immediately."""
-    with patch("bot.sms_gateway.TWILIO_AUTH_TOKEN", ""):
+    with patch("bot.gateway.sms.TWILIO_AUTH_TOKEN", ""):
         async with TestClient(TestServer(sms_app)) as client:
             resp = await client.post("/sms", data={
                 "From": "+14155551234",
@@ -96,8 +96,8 @@ async def test_webhook_returns_empty_twiml(sms_app):
 @pytest.mark.asyncio
 async def test_webhook_rejects_invalid_signature(sms_app):
     """Webhook should return 403 when signature validation fails."""
-    with patch("bot.sms_gateway.TWILIO_AUTH_TOKEN", "real-token"), \
-         patch("bot.sms_gateway.SMS_WEBHOOK_URL", "https://example.com/sms"):
+    with patch("bot.gateway.sms.TWILIO_AUTH_TOKEN", "real-token"), \
+         patch("bot.gateway.sms.SMS_WEBHOOK_URL", "https://example.com/sms"):
         async with TestClient(TestServer(sms_app)) as client:
             resp = await client.post(
                 "/sms",
@@ -113,9 +113,9 @@ async def test_webhook_calls_llm_reply(sms_app):
     mock_reply = AsyncMock(return_value="Bot reply")
     mock_sms = AsyncMock(return_value="SMS sent")
 
-    with patch("bot.sms_gateway.TWILIO_AUTH_TOKEN", ""), \
-         patch("bot.sms_gateway.llm", create=True) as mock_llm_mod, \
-         patch("bot.sms_gateway.run_sms", create=True, new=mock_sms):
+    with patch("bot.gateway.sms.TWILIO_AUTH_TOKEN", ""), \
+         patch("bot.gateway.sms.llm", create=True) as mock_llm_mod, \
+         patch("bot.gateway.sms.run_sms", create=True, new=mock_sms):
 
         # Patch the lazy imports inside _process_sms
         with patch("bot.llm.reply", mock_reply), \
@@ -143,7 +143,7 @@ async def test_webhook_extracts_mms_images(sms_app):
     mock_reply = AsyncMock(return_value="Got your image")
     mock_sms = AsyncMock(return_value="SMS sent")
 
-    with patch("bot.sms_gateway.TWILIO_AUTH_TOKEN", ""), \
+    with patch("bot.gateway.sms.TWILIO_AUTH_TOKEN", ""), \
          patch("bot.llm.reply", mock_reply), \
          patch("bot.tools.run_sms", mock_sms):
 

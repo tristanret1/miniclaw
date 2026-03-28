@@ -1,4 +1,4 @@
-"""Tests for bot.voice_gateway — local microphone voice gateway."""
+"""Tests for bot.gateway.voice — local microphone voice gateway."""
 
 import asyncio
 import struct
@@ -11,18 +11,18 @@ class TestVAD:
 
     def test_rms_silent_frame(self):
         """RMS of silence is 0."""
-        from bot.voice_gateway import compute_rms
+        from bot.gateway.voice import compute_rms
         silence = b"\x00" * 3200  # 1600 zero samples (16-bit)
         assert compute_rms(silence) == 0
 
     def test_rms_loud_frame(self):
         """RMS of a loud frame exceeds threshold."""
-        from bot.voice_gateway import compute_rms
+        from bot.gateway.voice import compute_rms
         loud = struct.pack(f"<{800}h", *([32767] * 800))
         assert compute_rms(loud) > 500
 
     def test_rms_empty_returns_zero(self):
-        from bot.voice_gateway import compute_rms
+        from bot.gateway.voice import compute_rms
         assert compute_rms(b"") == 0
 
 
@@ -31,7 +31,7 @@ class TestAudioSegmenter:
 
     def test_segments_on_silence(self):
         """AudioSegmenter yields a segment after silence duration."""
-        from bot.voice_gateway import AudioSegmenter
+        from bot.gateway.voice import AudioSegmenter
 
         segmenter = AudioSegmenter(
             silence_threshold=100,
@@ -62,7 +62,7 @@ class TestProcessUtterance:
     @pytest.fixture(autouse=True)
     def reset_conversation_state(self):
         """Ensure each test starts in wake-word-waiting mode."""
-        import bot.voice_gateway as vg
+        import bot.gateway.voice as vg
         vg._active_until = 0.0
         yield
         vg._active_until = 0.0
@@ -70,13 +70,13 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_wake_word_triggers_llm(self):
         """When wake word detected, utterance is sent to LLM and response is spoken."""
-        from bot.voice_gateway import _process_utterance
+        from bot.gateway.voice import _process_utterance
 
-        with patch("bot.voice_gateway.stt.transcribe", new_callable=AsyncMock, return_value="miniclaw hello"), \
-             patch("bot.voice_gateway.wake.check", return_value="hello"), \
-             patch("bot.voice_gateway.llm.reply", new_callable=AsyncMock, return_value="Hi there!"), \
-             patch("bot.voice_gateway.tts.synthesize", new_callable=AsyncMock, return_value=b"audio"), \
-             patch("bot.voice_gateway._play_audio_fallback", new_callable=AsyncMock) as mock_play:
+        with patch("bot.gateway.voice.stt.transcribe", new_callable=AsyncMock, return_value="miniclaw hello"), \
+             patch("bot.gateway.voice.wake.check", return_value="hello"), \
+             patch("bot.gateway.voice.llm.reply", new_callable=AsyncMock, return_value="Hi there!"), \
+             patch("bot.gateway.voice.tts.synthesize", new_callable=AsyncMock, return_value=b"audio"), \
+             patch("bot.gateway.voice._play_audio_fallback", new_callable=AsyncMock) as mock_play:
 
             await _process_utterance(b"fake-audio")
 
@@ -85,11 +85,11 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_no_wake_word_not_active_skips_llm(self):
         """When no wake word and not in conversation mode, LLM is not called."""
-        from bot.voice_gateway import _process_utterance
+        from bot.gateway.voice import _process_utterance
 
-        with patch("bot.voice_gateway.stt.transcribe", new_callable=AsyncMock, return_value="random speech"), \
-             patch("bot.voice_gateway.wake.check", return_value=None), \
-             patch("bot.voice_gateway.llm.reply", new_callable=AsyncMock) as mock_llm:
+        with patch("bot.gateway.voice.stt.transcribe", new_callable=AsyncMock, return_value="random speech"), \
+             patch("bot.gateway.voice.wake.check", return_value=None), \
+             patch("bot.gateway.voice.llm.reply", new_callable=AsyncMock) as mock_llm:
 
             await _process_utterance(b"fake-audio")
 
@@ -98,17 +98,17 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_active_mode_no_wake_word_needed(self):
         """In conversation mode, utterances go to LLM without wake word."""
-        import bot.voice_gateway as vg
-        from bot.voice_gateway import _process_utterance
+        import bot.gateway.voice as vg
+        from bot.gateway.voice import _process_utterance
 
         # Simulate active conversation mode
         vg._activate()
 
-        with patch("bot.voice_gateway.stt.transcribe", new_callable=AsyncMock, return_value="what time is it"), \
-             patch("bot.voice_gateway.wake.check", return_value=None), \
-             patch("bot.voice_gateway.llm.reply", new_callable=AsyncMock, return_value="It's 3pm") as mock_llm, \
-             patch("bot.voice_gateway.tts.synthesize", new_callable=AsyncMock, return_value=b"audio"), \
-             patch("bot.voice_gateway._play_audio_fallback", new_callable=AsyncMock):
+        with patch("bot.gateway.voice.stt.transcribe", new_callable=AsyncMock, return_value="what time is it"), \
+             patch("bot.gateway.voice.wake.check", return_value=None), \
+             patch("bot.gateway.voice.llm.reply", new_callable=AsyncMock, return_value="It's 3pm") as mock_llm, \
+             patch("bot.gateway.voice.tts.synthesize", new_callable=AsyncMock, return_value=b"audio"), \
+             patch("bot.gateway.voice._play_audio_fallback", new_callable=AsyncMock):
 
             await _process_utterance(b"fake-audio")
 
@@ -120,15 +120,15 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_conversation_mode_expires(self):
         """After timeout, conversation mode expires and wake word is needed again."""
-        import bot.voice_gateway as vg
-        from bot.voice_gateway import _process_utterance
+        import bot.gateway.voice as vg
+        from bot.gateway.voice import _process_utterance
 
         # Set active_until to the past (expired)
         vg._active_until = 0.0
 
-        with patch("bot.voice_gateway.stt.transcribe", new_callable=AsyncMock, return_value="what time is it"), \
-             patch("bot.voice_gateway.wake.check", return_value=None), \
-             patch("bot.voice_gateway.llm.reply", new_callable=AsyncMock) as mock_llm:
+        with patch("bot.gateway.voice.stt.transcribe", new_callable=AsyncMock, return_value="what time is it"), \
+             patch("bot.gateway.voice.wake.check", return_value=None), \
+             patch("bot.gateway.voice.llm.reply", new_callable=AsyncMock) as mock_llm:
 
             await _process_utterance(b"fake-audio")
 
@@ -137,17 +137,17 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_wake_word_activates_conversation(self):
         """After wake word, subsequent utterances don't need wake word."""
-        import bot.voice_gateway as vg
-        from bot.voice_gateway import _process_utterance, _is_active
+        import bot.gateway.voice as vg
+        from bot.gateway.voice import _process_utterance, _is_active
 
         assert not _is_active()
 
         # First utterance with wake word
-        with patch("bot.voice_gateway.stt.transcribe", new_callable=AsyncMock, return_value="miniclaw hello"), \
-             patch("bot.voice_gateway.wake.check", return_value="hello"), \
-             patch("bot.voice_gateway.llm.reply", new_callable=AsyncMock, return_value="Hi!"), \
-             patch("bot.voice_gateway.tts.synthesize", new_callable=AsyncMock, return_value=b"audio"), \
-             patch("bot.voice_gateway._play_audio_fallback", new_callable=AsyncMock):
+        with patch("bot.gateway.voice.stt.transcribe", new_callable=AsyncMock, return_value="miniclaw hello"), \
+             patch("bot.gateway.voice.wake.check", return_value="hello"), \
+             patch("bot.gateway.voice.llm.reply", new_callable=AsyncMock, return_value="Hi!"), \
+             patch("bot.gateway.voice.tts.synthesize", new_callable=AsyncMock, return_value=b"audio"), \
+             patch("bot.gateway.voice._play_audio_fallback", new_callable=AsyncMock):
 
             await _process_utterance(b"fake-audio")
 
@@ -157,10 +157,10 @@ class TestProcessUtterance:
     @pytest.mark.asyncio
     async def test_empty_transcription_skips(self):
         """When STT returns empty, processing stops early."""
-        from bot.voice_gateway import _process_utterance
+        from bot.gateway.voice import _process_utterance
 
-        with patch("bot.voice_gateway.stt.transcribe", new_callable=AsyncMock, return_value=""), \
-             patch("bot.voice_gateway.wake.check") as mock_wake:
+        with patch("bot.gateway.voice.stt.transcribe", new_callable=AsyncMock, return_value=""), \
+             patch("bot.gateway.voice.wake.check") as mock_wake:
 
             await _process_utterance(b"fake-audio")
 
@@ -173,7 +173,7 @@ class TestAnnounce:
     @pytest.fixture(autouse=True)
     def setup_queue(self):
         """Ensure announce queue exists for each test."""
-        import bot.voice_gateway as vg
+        import bot.gateway.voice as vg
         vg._announce_queue = asyncio.Queue()
         yield
         vg._announce_queue = None
@@ -181,8 +181,8 @@ class TestAnnounce:
     @pytest.mark.asyncio
     async def test_announce_queues_message(self):
         """announce() puts a message on the queue."""
-        import bot.voice_gateway as vg
-        from bot.voice_gateway import announce
+        import bot.gateway.voice as vg
+        from bot.gateway.voice import announce
 
         result = await announce("你好", source="小圆")
         assert "queued" in result
@@ -194,8 +194,8 @@ class TestAnnounce:
     @pytest.mark.asyncio
     async def test_announce_without_gateway_returns_error(self):
         """announce() returns error when voice gateway is not running."""
-        import bot.voice_gateway as vg
-        from bot.voice_gateway import announce
+        import bot.gateway.voice as vg
+        from bot.gateway.voice import announce
 
         vg._announce_queue = None
         result = await announce("test")
@@ -204,7 +204,7 @@ class TestAnnounce:
     @pytest.mark.asyncio
     async def test_announce_empty_message_returns_error(self):
         """announce() rejects empty messages."""
-        from bot.voice_gateway import announce
+        from bot.gateway.voice import announce
 
         result = await announce("   ")
         assert "Error" in result
@@ -212,10 +212,10 @@ class TestAnnounce:
     @pytest.mark.asyncio
     async def test_play_announcement_with_source_prefix(self):
         """_play_announcement prefixes the source name."""
-        from bot.voice_gateway import _play_announcement
+        from bot.gateway.voice import _play_announcement
 
-        with patch("bot.voice_gateway.tts.synthesize", new_callable=AsyncMock, return_value=b"audio") as mock_tts, \
-             patch("bot.voice_gateway._play_audio_fallback", new_callable=AsyncMock):
+        with patch("bot.gateway.voice.tts.synthesize", new_callable=AsyncMock, return_value=b"audio") as mock_tts, \
+             patch("bot.gateway.voice._play_audio_fallback", new_callable=AsyncMock):
 
             await _play_announcement("提醒你开会", "小圆")
 
@@ -227,10 +227,10 @@ class TestAnnounce:
     @pytest.mark.asyncio
     async def test_play_announcement_no_source(self):
         """_play_announcement without source speaks the message directly."""
-        from bot.voice_gateway import _play_announcement
+        from bot.gateway.voice import _play_announcement
 
-        with patch("bot.voice_gateway.tts.synthesize", new_callable=AsyncMock, return_value=b"audio") as mock_tts, \
-             patch("bot.voice_gateway._play_audio_fallback", new_callable=AsyncMock):
+        with patch("bot.gateway.voice.tts.synthesize", new_callable=AsyncMock, return_value=b"audio") as mock_tts, \
+             patch("bot.gateway.voice._play_audio_fallback", new_callable=AsyncMock):
 
             await _play_announcement("hello", "")
 
@@ -240,8 +240,8 @@ class TestAnnounce:
     @pytest.mark.asyncio
     async def test_drain_announcements_plays_all(self):
         """_drain_announcements plays all queued messages in order."""
-        import bot.voice_gateway as vg
-        from bot.voice_gateway import _drain_announcements
+        import bot.gateway.voice as vg
+        from bot.gateway.voice import _drain_announcements
 
         vg._announce_queue.put_nowait(("msg1", "agent1"))
         vg._announce_queue.put_nowait(("msg2", "agent2"))
@@ -250,9 +250,9 @@ class TestAnnounce:
         async def fake_play(msg, src):
             played.append((msg, src))
 
-        with patch("bot.voice_gateway._play_announcement", new=fake_play), \
-             patch("bot.voice_gateway._mute"), \
-             patch("bot.voice_gateway._mute_cooldown"):
+        with patch("bot.gateway.voice._play_announcement", new=fake_play), \
+             patch("bot.gateway.voice._mute"), \
+             patch("bot.gateway.voice._mute_cooldown"):
 
             await _drain_announcements()
 

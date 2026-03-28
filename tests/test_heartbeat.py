@@ -1,4 +1,4 @@
-"""Tests for bot.heartbeat — token stripping, content checks, active hours."""
+"""Tests for bot.gateway.heartbeat — token stripping, content checks, active hours."""
 
 import asyncio
 import time
@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from bot.heartbeat import (
+from bot.gateway.heartbeat import (
     HeartbeatRunner,
     is_heartbeat_content_empty,
     is_within_active_hours,
@@ -128,28 +128,28 @@ class TestActiveHours:
     def test_invalid_format_fail_open(self):
         assert is_within_active_hours("abc", "def") is True
 
-    @patch("bot.heartbeat.datetime")
+    @patch("bot.gateway.heartbeat.datetime")
     def test_within_range(self, mock_dt):
         from datetime import datetime as real_dt
         mock_now = real_dt(2026, 3, 23, 14, 30)  # 14:30
         mock_dt.now.return_value = mock_now
         assert is_within_active_hours("09:00", "18:00") is True
 
-    @patch("bot.heartbeat.datetime")
+    @patch("bot.gateway.heartbeat.datetime")
     def test_outside_range(self, mock_dt):
         from datetime import datetime as real_dt
         mock_now = real_dt(2026, 3, 23, 7, 0)  # 07:00
         mock_dt.now.return_value = mock_now
         assert is_within_active_hours("09:00", "18:00") is False
 
-    @patch("bot.heartbeat.datetime")
+    @patch("bot.gateway.heartbeat.datetime")
     def test_midnight_wrap_inside(self, mock_dt):
         from datetime import datetime as real_dt
         mock_now = real_dt(2026, 3, 23, 23, 0)  # 23:00
         mock_dt.now.return_value = mock_now
         assert is_within_active_hours("22:00", "06:00") is True
 
-    @patch("bot.heartbeat.datetime")
+    @patch("bot.gateway.heartbeat.datetime")
     def test_midnight_wrap_outside(self, mock_dt):
         from datetime import datetime as real_dt
         mock_now = real_dt(2026, 3, 23, 12, 0)  # 12:00
