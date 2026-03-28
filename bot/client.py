@@ -174,7 +174,7 @@ def create_bot(agent: Agent) -> discord.Client:
             print(f"Auto-reply enabled with {AUTO_REPLY_CHANCE*100}% chance")
 
         # Send startup greeting
-        await _send_greeting(bot, agent)
+        # await _send_greeting(bot, agent)
 
         # Start cron scheduler only once (first agent)
         if not _cron_started:

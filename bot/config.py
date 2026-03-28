@@ -8,7 +8,7 @@ DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
 CODEX_MODEL = os.getenv("CODEX_MODEL", "gpt-5.3-codex")
 PROVIDER = os.getenv("PROVIDER", "anthropic")  # "anthropic" or "codex"
-MAX_HISTORY = int(os.getenv("MAX_HISTORY", "200"))
+MAX_HISTORY = int(os.getenv("MAX_HISTORY", "50"))
 TOOLS_ENABLED = os.getenv("TOOLS_ENABLED", "false").lower() in ("true", "1", "yes")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")  # for embedding (text-embedding-3-small)
 
