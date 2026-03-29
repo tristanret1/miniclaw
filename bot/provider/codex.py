@@ -4,11 +4,8 @@ import json
 import time
 from collections.abc import AsyncIterator
 
-from bot.oauth.codex import (
-    CODEX_API_ENDPOINT,
-    load_credentials,
-    refresh_token,
-)
+from bot.constants import CODEX_API_ENDPOINT
+from bot.oauth.codex import load_credentials, refresh_token
 from bot.logger import get_logger
 from bot.message import Message
 from bot.provider.base import BaseProvider
