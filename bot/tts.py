@@ -9,10 +9,12 @@ from __future__ import annotations
 import base64
 import json
 from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
-import edge_tts
 import httpx
-from openai import AsyncOpenAI
+
+if TYPE_CHECKING:
+    from openai import AsyncOpenAI
 
 from bot.config import get_config, get_secrets
 from bot.logger import get_logger
@@ -32,9 +34,11 @@ _VOLCENGINE_TTS_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectiona
 
 
 def _get_openai_client() -> AsyncOpenAI:
+    from openai import AsyncOpenAI as _AsyncOpenAI
+
     global _openai_client
     if _openai_client is None:
-        _openai_client = AsyncOpenAI(api_key=get_secrets()["OPENAI_API_KEY"])
+        _openai_client = _AsyncOpenAI(api_key=get_secrets()["OPENAI_API_KEY"])
     return _openai_client
 
 
@@ -113,6 +117,8 @@ async def synthesize_openai(
 
 async def synthesize_edge(text: str, *, voice: str = "en-US-AriaNeural") -> bytes:
     """Synthesize speech using Microsoft Edge TTS (free, no API key). Returns MP3 bytes."""
+    import edge_tts
+
     communicate = edge_tts.Communicate(text, voice)
     chunks: list[bytes] = []
     async for chunk in communicate.stream():

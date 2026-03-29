@@ -47,24 +47,25 @@ class TestEdgeTTS:
     @pytest.mark.asyncio
     async def test_synthesize_edge_returns_bytes(self):
         """synthesize_edge() returns concatenated audio bytes."""
-        from bot.tts import synthesize_edge
-
         fake_chunks = [
             {"type": "audio", "data": b"chunk1"},
             {"type": "WordBoundary", "data": None},
             {"type": "audio", "data": b"chunk2"},
         ]
 
-        with patch("bot.tts.edge_tts") as mock_edge:
-            mock_communicate = AsyncMock()
+        mock_communicate = AsyncMock()
 
-            async def fake_stream():
-                for chunk in fake_chunks:
-                    yield chunk
+        async def fake_stream():
+            for chunk in fake_chunks:
+                yield chunk
 
-            mock_communicate.stream = fake_stream
-            mock_edge.Communicate.return_value = mock_communicate
+        mock_communicate.stream = fake_stream
 
+        mock_edge_tts = MagicMock()
+        mock_edge_tts.Communicate.return_value = mock_communicate
+
+        with patch.dict("sys.modules", {"edge_tts": mock_edge_tts}):
+            from bot.tts import synthesize_edge
             result = await synthesize_edge("Hello")
             assert result == b"chunk1chunk2"
 

@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import io
 import wave
+from typing import TYPE_CHECKING
 
-from openai import AsyncOpenAI
+if TYPE_CHECKING:
+    from openai import AsyncOpenAI
 
 from bot.config import get_config, get_secrets
 from bot.logger import get_logger
@@ -20,9 +22,11 @@ _openai_client: AsyncOpenAI | None = None
 
 
 def _get_openai_client() -> AsyncOpenAI:
+    from openai import AsyncOpenAI as _AsyncOpenAI
+
     global _openai_client
     if _openai_client is None:
-        _openai_client = AsyncOpenAI(api_key=get_secrets()["OPENAI_API_KEY"])
+        _openai_client = _AsyncOpenAI(api_key=get_secrets()["OPENAI_API_KEY"])
     return _openai_client
 
 
