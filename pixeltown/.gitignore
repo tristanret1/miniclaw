@@ -1,3 +1,9 @@
+# Ralph internal files
+.ralph/
+
+# Build output
+pixeltown/dist/
+
 # Ralph generated files (inside .ralph/ subfolder)
 .ralph/.call_count
 .ralph/.last_reset
