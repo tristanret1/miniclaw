@@ -1,5 +1,7 @@
 """Tool definitions and execution for Claude tool use."""
 
+__all__ = ["ALL_TOOLS", "handle_tool_call"]
+
 from bot import acp
 from bot.storage import memory
 from bot.config import get_config

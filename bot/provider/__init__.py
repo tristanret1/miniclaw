@@ -4,6 +4,14 @@ from bot.provider.base import BaseProvider
 from bot.provider.anthropic import AnthropicProvider
 from bot.provider.codex import CodexProvider
 
+__all__ = [
+    "BaseProvider",
+    "AnthropicProvider",
+    "CodexProvider",
+    "get_provider",
+    "get_default_provider",
+]
+
 _PROVIDERS: dict[str, type[BaseProvider]] = {
     "anthropic": AnthropicProvider,
     "codex": CodexProvider,

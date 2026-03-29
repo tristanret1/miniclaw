@@ -1,5 +1,12 @@
 """OAuth 2.0 PKCE flow for Claude (Anthropic subscription)."""
 
+__all__ = [
+    "authorize",
+    "save_credentials",
+    "load_credentials",
+    "refresh_token",
+]
+
 import hashlib
 import json
 import os
