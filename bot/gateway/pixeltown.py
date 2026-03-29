@@ -123,6 +123,7 @@ class PixelTownGateway:
                 "agent": agent_id,
                 "from": "user",
                 "preview": reply_text[:80] if reply_text else "",
+                "reply": reply_text or "",
             })
             log.info("LLM reply for %s: %s", agent_id, (reply_text or "")[:60])
         except Exception:

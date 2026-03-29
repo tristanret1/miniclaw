@@ -183,6 +183,29 @@ async function init() {
     showHouse(agentId);
   });
 
+  // ── Wire Subtitle (agent reply displayed at bottom) ──
+  let subtitleTimer: ReturnType<typeof setTimeout> | null = null;
+  const subtitleEl = document.createElement("div");
+  subtitleEl.style.cssText = `
+    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.8); color: #f5deb3; padding: 12px 24px;
+    border-radius: 8px; border: 2px solid rgba(139,105,20,0.6);
+    font-family: 'Press Start 2P', monospace; font-size: 14px;
+    max-width: 70%; text-align: center; line-height: 1.8;
+    pointer-events: none; display: none; z-index: 100;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  `;
+  overlayEl.appendChild(subtitleEl);
+
+  town.setOnSubtitle((agentName, text) => {
+    if (subtitleTimer) clearTimeout(subtitleTimer);
+    subtitleEl.innerHTML = `<span style="color:#fbbf24;">${agentName}:</span> ${text}`;
+    subtitleEl.style.display = "block";
+    subtitleTimer = setTimeout(() => {
+      subtitleEl.style.display = "none";
+    }, Math.min(15000, 3000 + text.length * 80));
+  });
+
   // ── Wire Plaza Click → Dashboard ──
   town.setOnPlazaClick(() => {
     if (layoutEditor.isActive()) return;

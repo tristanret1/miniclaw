@@ -253,26 +253,66 @@ export class Agent {
     else if (this.status === "socializing") emoji = "\uD83D\uDCAC";
     else return;
 
+    this.showBubble(emoji, 12);
+  }
+
+  /** Show a speech bubble with text above the agent. Auto-hides after duration (0 = permanent). */
+  showSpeechBubble(text: string, durationMs = 8000): void {
+    // Truncate long text
+    const display = text.length > 60 ? text.slice(0, 57) + "..." : text;
+    this.showBubble(display, 7, true);
+
+    if (durationMs > 0) {
+      setTimeout(() => {
+        // Only clear if it's still showing this text
+        if (this.bubble) {
+          this.container.removeChild(this.bubble);
+          this.bubble = null;
+          this.updateBubble(); // restore status bubble if applicable
+        }
+      }, durationMs);
+    }
+  }
+
+  private showBubble(text: string, fontSize: number, isText = false): void {
+    if (this.bubble) {
+      this.container.removeChild(this.bubble);
+      this.bubble = null;
+    }
+
     this.bubble = new Container();
 
-    const bg = new Graphics();
-    const bx = SCALED_TILE / 2;
-    const by = -PX * 14;
-    bg.roundRect(bx - PX * 6, by - PX * 5, PX * 12, PX * 10, PX * 2);
-    bg.fill({ color: 0xffffff, alpha: 0.9 });
-    bg.roundRect(bx - PX * 6, by - PX * 5, PX * 12, PX * 10, PX * 2);
-    bg.stroke({ width: 1, color: 0x000000, alpha: 0.3 });
-    bg.moveTo(bx - PX * 2, by + PX * 5);
-    bg.lineTo(bx, by + PX * 8);
-    bg.lineTo(bx + PX * 2, by + PX * 5);
-    bg.fill({ color: 0xffffff, alpha: 0.9 });
-    this.bubble.addChild(bg);
-
     const bubbleText = new Text({
-      text: emoji,
-      style: { fontSize: 12 },
+      text,
+      style: {
+        fontFamily: isText ? '"Press Start 2P", monospace' : 'sans-serif',
+        fontSize,
+        fill: 0x333333,
+        wordWrap: isText,
+        wordWrapWidth: 150,
+      },
     });
     bubbleText.anchor.set(0.5, 0.5);
+
+    const padX = PX * 4;
+    const padY = PX * 3;
+    const bw = Math.max(PX * 12, bubbleText.width + padX * 2);
+    const bh = Math.max(PX * 10, bubbleText.height + padY * 2);
+    const bx = SCALED_TILE / 2;
+    const by = -PX * 8 - bh / 2;
+
+    const bg = new Graphics();
+    bg.roundRect(bx - bw / 2, by - bh / 2, bw, bh, PX * 2);
+    bg.fill({ color: 0xffffff, alpha: 0.95 });
+    bg.roundRect(bx - bw / 2, by - bh / 2, bw, bh, PX * 2);
+    bg.stroke({ width: 1, color: 0x000000, alpha: 0.2 });
+    // Tail
+    bg.moveTo(bx - PX * 2, by + bh / 2);
+    bg.lineTo(bx, by + bh / 2 + PX * 4);
+    bg.lineTo(bx + PX * 2, by + bh / 2);
+    bg.fill({ color: 0xffffff, alpha: 0.95 });
+    this.bubble.addChild(bg);
+
     bubbleText.x = bx;
     bubbleText.y = by;
     this.bubble.addChild(bubbleText);

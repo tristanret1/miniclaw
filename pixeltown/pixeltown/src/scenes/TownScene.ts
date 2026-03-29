@@ -49,6 +49,7 @@ export class TownScene {
   // callbacks
   private onCottageClick: ((agentId: string) => void) | null = null;
   private onPlazaClick: (() => void) | null = null;
+  private onSubtitle: ((agentName: string, text: string) => void) | null = null;
 
   constructor() {
     this.container = new Container();
@@ -344,6 +345,10 @@ export class TownScene {
     this.onPlazaClick = cb;
   }
 
+  setOnSubtitle(cb: (agentName: string, text: string) => void): void {
+    this.onSubtitle = cb;
+  }
+
   start(): void {
     this.dayNight.start();
     this.season.start();
@@ -414,18 +419,10 @@ export class TownScene {
         break;
       }
       case "message_received": {
-        // Show notification on agent — briefly set detail text
-        const msgAgent = this.agents.get(msg.agent);
-        if (msgAgent) {
-          const prevDetail = msgAgent.detail;
-          const prevStatus = msgAgent.status;
-          msgAgent.setStatus(msgAgent.status, `Msg from ${msg.from}`, Date.now());
-          // Clear notification after 3 seconds
-          setTimeout(() => {
-            if (msgAgent.detail === `Msg from ${msg.from}`) {
-              msgAgent.setStatus(prevStatus, prevDetail, Date.now());
-            }
-          }, 3000);
+        const replyText = (msg as any).reply || msg.preview || "";
+        if (replyText && this.onSubtitle) {
+          const agentName = this.agents.get(msg.agent)?.name ?? msg.agent;
+          this.onSubtitle(agentName, replyText);
         }
         break;
       }

@@ -79,6 +79,7 @@ export interface MessageReceivedMessage {
   agent: string;
   from: string;
   preview: string;
+  reply?: string;
 }
 
 export type ServerMessage =
