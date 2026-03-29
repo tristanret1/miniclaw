@@ -12,11 +12,11 @@
 ## Medium Priority
 - [x] Add `__all__` exports to key modules (oauth/codex.py, oauth/anthropic.py, provider/__init__.py, tools/__init__.py) for cleaner API boundaries
 - [x] Add integration smoke test that imports all bot modules without error — test_smoke.py verifies all submodules under bot/ import cleanly
-- [ ] Review and commit unstaged config.yaml changes (voice enabled, wake word change)
+- [x] Review and commit unstaged config.yaml changes — already committed in 3d341d0
 
 ## Low Priority
 - [ ] Performance: session history loading could benefit from pagination for large histories
-- [ ] Code cleanup: consolidate duplicate httpx client creation patterns across providers
+- [x] Code cleanup: consolidate duplicate httpx client creation — already centralized in BaseProvider._get_client(); other services (tts, twilio, sms) correctly use short-lived clients
 
 ## Notes
 - Codebase is in good shape post-refactor (commit 46b17a3)
