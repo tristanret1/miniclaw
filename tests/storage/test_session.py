@@ -139,3 +139,24 @@ class TestDbFunctions:
             await session_mod._persist("s1", role, f"msg{i}")
         history = await session_mod._load_from_db("s1", limit=5)
         assert len(history) == 5
+
+    async def test_load_coerces_bare_scalar_content(self, session_db):
+        """Bare int/float stored in DB should be coerced to str on load."""
+        conn = session_mod._get_db()
+        # Insert a bare integer directly (bypassing _persist which calls str())
+        conn.execute(
+            "INSERT INTO messages (session_key, role, content) VALUES (?, ?, ?)",
+            ("s1", "user", "42"),
+        )
+        conn.commit()
+        history = await session_mod._load_from_db("s1", limit=10)
+        assert len(history) == 1
+        # "42" is valid JSON that json.loads returns as int → should be coerced to str
+        assert isinstance(history[0]["content"], str)
+
+    async def test_persist_dict_content(self, session_db):
+        """Dict content is persisted as JSON."""
+        await session_mod._persist("s1", "user", {"key": "value"})
+        history = await session_mod._load_from_db("s1", limit=10)
+        assert len(history) == 1
+        assert history[0]["content"] == {"key": "value"}

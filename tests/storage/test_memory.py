@@ -119,6 +119,59 @@ class TestMergeScores:
         assert abs(score - 1.0) < 1e-6
 
 
+class TestHasEmbeddings:
+    def test_no_key(self):
+        from unittest.mock import patch
+        from bot.storage.memory import _has_embeddings
+        with patch("bot.storage.memory.get_secrets", return_value={"OPENAI_API_KEY": ""}):
+            assert _has_embeddings() is False
+
+    def test_with_key(self):
+        from unittest.mock import patch
+        from bot.storage.memory import _has_embeddings
+        with patch("bot.storage.memory.get_secrets", return_value={"OPENAI_API_KEY": "sk-test"}):
+            assert _has_embeddings() is True
+
+
+class TestGetEmbedding:
+    def test_no_api_key_returns_none(self):
+        from unittest.mock import patch
+        with patch("bot.storage.memory.get_secrets", return_value={"OPENAI_API_KEY": ""}):
+            from bot.storage.memory import _get_embedding
+            result = _get_embedding("test text")
+            assert result is None
+
+    def test_api_error_returns_none(self):
+        from unittest.mock import patch, MagicMock
+        mock_resp = MagicMock()
+        mock_resp.status_code = 500
+        mock_resp.text = "Internal Server Error"
+        with patch("bot.storage.memory.get_secrets", return_value={"OPENAI_API_KEY": "fake-key"}), \
+             patch("bot.storage.memory.httpx.post", return_value=mock_resp):
+            from bot.storage.memory import _get_embedding
+            result = _get_embedding("test text")
+            assert result is None
+
+    def test_success_returns_embedding(self):
+        from unittest.mock import patch, MagicMock
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": [{"embedding": [0.1, 0.2, 0.3]}]}
+        with patch("bot.storage.memory.get_secrets", return_value={"OPENAI_API_KEY": "fake-key"}), \
+             patch("bot.storage.memory.httpx.post", return_value=mock_resp):
+            from bot.storage.memory import _get_embedding
+            result = _get_embedding("test text")
+            assert result == [0.1, 0.2, 0.3]
+
+    def test_exception_returns_none(self):
+        from unittest.mock import patch
+        with patch("bot.storage.memory.get_secrets", return_value={"OPENAI_API_KEY": "fake-key"}), \
+             patch("bot.storage.memory.httpx.post", side_effect=Exception("network error")):
+            from bot.storage.memory import _get_embedding
+            result = _get_embedding("test text")
+            assert result is None
+
+
 class TestFlush:
     def test_should_flush_below_threshold(self):
         history = [{"role": "user", "content": "short"}]

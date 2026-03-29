@@ -204,6 +204,205 @@ class TestSanitizeForAnthropic:
         assert "t_OTHER" not in result_ids_found
 
 
+class TestSanitizeForCodex:
+    def test_empty_messages(self):
+        from bot.provider.transform import sanitize_for_codex
+        assert sanitize_for_codex([]) == []
+
+    def test_simple_messages_preserved(self):
+        from bot.provider.transform import sanitize_for_codex
+        msgs = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "hello"},
+        ]
+        result = sanitize_for_codex(msgs)
+        assert len(result) == 2
+
+    def test_starts_with_assistant_dropped(self):
+        from bot.provider.transform import sanitize_for_codex
+        msgs = [
+            {"role": "assistant", "content": "oops"},
+            {"role": "user", "content": "hi"},
+        ]
+        result = sanitize_for_codex(msgs)
+        assert len(result) == 1
+        assert result[0]["role"] == "user"
+
+    def test_tool_use_with_matching_result_preserved(self):
+        from bot.provider.transform import sanitize_for_codex
+        msgs = [
+            {"role": "user", "content": "run"},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "t1", "name": "exec", "input": {}},
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": "ok"},
+            ]},
+        ]
+        result = sanitize_for_codex(msgs)
+        assert len(result) == 3
+
+    def test_orphan_tool_use_dropped(self):
+        from bot.provider.transform import sanitize_for_codex
+        msgs = [
+            {"role": "user", "content": "run"},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "t1", "name": "exec", "input": {}},
+            ]},
+            # No tool_result follows
+            {"role": "user", "content": "next"},
+        ]
+        result = sanitize_for_codex(msgs)
+        # tool_use assistant dropped, both user messages kept
+        assert not any(
+            isinstance(m.get("content"), list) and any(
+                b.get("type") == "tool_use" for b in m["content"] if isinstance(b, dict)
+            )
+            for m in result
+        )
+
+    def test_orphan_tool_use_at_end_dropped(self):
+        from bot.provider.transform import sanitize_for_codex
+        msgs = [
+            {"role": "user", "content": "run"},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "t1", "name": "exec", "input": {}},
+            ]},
+        ]
+        result = sanitize_for_codex(msgs)
+        assert len(result) == 1
+        assert result[0]["role"] == "user"
+
+    def test_orphan_tool_use_with_following_tool_result_both_dropped(self):
+        """When tool_use result doesn't match, both are skipped."""
+        from bot.provider.transform import sanitize_for_codex
+        msgs = [
+            {"role": "user", "content": "run"},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "t1", "name": "exec", "input": {}},
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "wrong", "content": "x"},
+            ]},
+            {"role": "user", "content": "after"},
+        ]
+        result = sanitize_for_codex(msgs)
+        # The mismatched pair should be dropped
+        assert result[0]["role"] == "user"
+
+    def test_routes_via_sanitize(self):
+        msgs = [
+            {"role": "assistant", "content": "dropped"},
+            {"role": "user", "content": "hi"},
+        ]
+        result = sanitize(msgs, "codex")
+        assert len(result) == 1
+        assert result[0]["role"] == "user"
+
+
+class TestStripToolBlocks:
+    def test_empty_messages(self):
+        from bot.provider.transform import strip_tool_blocks
+        assert strip_tool_blocks([]) == []
+
+    def test_plain_text_preserved(self):
+        from bot.provider.transform import strip_tool_blocks
+        msgs = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "hello"},
+        ]
+        result = strip_tool_blocks(msgs)
+        assert len(result) == 2
+        assert result[0]["content"] == "hi"
+        assert result[1]["content"] == "hello"
+
+    def test_tool_use_only_message_dropped(self):
+        from bot.provider.transform import strip_tool_blocks
+        msgs = [
+            {"role": "user", "content": "run"},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "t1", "name": "exec", "input": {}},
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": "ok"},
+            ]},
+            {"role": "assistant", "content": [{"type": "text", "text": "done"}]},
+        ]
+        result = strip_tool_blocks(msgs)
+        assert len(result) == 2
+        assert result[0]["content"] == "run"
+        assert result[1]["content"] == "done"
+
+    def test_mixed_message_keeps_text(self):
+        from bot.provider.transform import strip_tool_blocks
+        msgs = [
+            {"role": "user", "content": "do it"},
+            {"role": "assistant", "content": [
+                {"type": "text", "text": "sure"},
+                {"type": "tool_use", "id": "t1", "name": "exec", "input": {}},
+            ]},
+        ]
+        result = strip_tool_blocks(msgs)
+        assert len(result) == 2
+        assert result[1]["content"] == "sure"
+
+    def test_multiple_text_blocks_preserved_as_list(self):
+        from bot.provider.transform import strip_tool_blocks
+        msgs = [
+            {"role": "user", "content": "go"},
+            {"role": "assistant", "content": [
+                {"type": "text", "text": "first"},
+                {"type": "text", "text": "second"},
+                {"type": "tool_use", "id": "t1", "name": "exec", "input": {}},
+            ]},
+        ]
+        result = strip_tool_blocks(msgs)
+        assert len(result) == 2
+        assert isinstance(result[1]["content"], list)
+        assert len(result[1]["content"]) == 2
+
+    def test_consecutive_same_role_merged(self):
+        from bot.provider.transform import strip_tool_blocks
+        msgs = [
+            {"role": "user", "content": "first"},
+            {"role": "user", "content": "second"},
+            {"role": "assistant", "content": "reply"},
+        ]
+        result = strip_tool_blocks(msgs)
+        assert len(result) == 2
+        assert result[0]["content"] == "first\n\nsecond"
+
+    def test_starts_with_assistant_dropped(self):
+        from bot.provider.transform import strip_tool_blocks
+        msgs = [
+            {"role": "assistant", "content": "oops"},
+            {"role": "user", "content": "hi"},
+        ]
+        result = strip_tool_blocks(msgs)
+        assert len(result) == 1
+        assert result[0]["role"] == "user"
+
+    def test_non_string_non_list_content_kept(self):
+        from bot.provider.transform import strip_tool_blocks
+        msgs = [
+            {"role": "user", "content": 42},
+        ]
+        result = strip_tool_blocks(msgs)
+        assert len(result) == 1
+
+    def test_consecutive_list_content_same_role_warns_and_drops(self):
+        """When merging fails (both list content), second is dropped."""
+        from bot.provider.transform import strip_tool_blocks
+        msgs = [
+            {"role": "user", "content": "start"},
+            {"role": "assistant", "content": [{"type": "text", "text": "a"}]},
+            {"role": "assistant", "content": [{"type": "text", "text": "b"}]},
+        ]
+        result = strip_tool_blocks(msgs)
+        # Second assistant dropped during merge (list + list)
+        assert len(result) == 2
+
+
 class TestSanitizeRouter:
     def test_routes_to_anthropic(self):
         msgs = [
