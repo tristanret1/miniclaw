@@ -7,6 +7,20 @@ from bot.provider.anthropic import AnthropicProvider
 from bot.provider.codex import CodexProvider
 
 
+class TestBaseProvider:
+    async def test_close_noop_when_no_client(self):
+        provider = get_provider("anthropic", "claude-test")
+        await provider.close()
+        assert provider._http is None
+
+    async def test_close_closes_client(self):
+        import httpx
+        provider = get_provider("anthropic", "claude-test")
+        provider._http = httpx.AsyncClient()
+        await provider.close()
+        assert provider._http is None
+
+
 class TestProviderRegistry:
     def test_get_anthropic_provider(self):
         provider = get_provider("anthropic", "claude-test")

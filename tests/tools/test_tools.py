@@ -20,6 +20,16 @@ class TestRunExec:
         result = await run_exec("exit 1")
         assert "exit code" in result
 
+    async def test_nonzero_exit_with_output(self):
+        result = await run_exec("echo fail_output; exit 2")
+        assert "fail_output" in result
+        assert "exit code 2" in result
+
+    async def test_github_token_injected(self):
+        with patch("bot.tools.exec.get_secrets", return_value={"GITHUB_TOKEN": "tok_test"}):
+            result = await run_exec("echo $GH_TOKEN")
+            assert "tok_test" in result
+
     async def test_stderr_included(self):
         result = await run_exec("echo err >&2")
         assert "err" in result

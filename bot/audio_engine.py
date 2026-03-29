@@ -14,10 +14,6 @@ import tempfile
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from AVFoundation import AVAudioEngine, AVAudioFile, AVAudioPlayerNode
-from AVFAudio import AVAudioFormat, AVAudioPCMBuffer
-from Foundation import NSURL
-
 from bot.config import get_config
 from bot.logger import get_logger
 
@@ -25,6 +21,14 @@ log = get_logger("audio_engine")
 
 # OpenAI streaming TTS: 24kHz, 16-bit signed, mono
 _TTS_SAMPLE_RATE = 24000
+
+
+def _import_avfoundation():
+    """Lazy-import macOS AVFoundation frameworks (PyObjC)."""
+    from AVFoundation import AVAudioEngine, AVAudioFile, AVAudioPlayerNode  # noqa: F811
+    from AVFAudio import AVAudioFormat, AVAudioPCMBuffer  # noqa: F811
+    from Foundation import NSURL  # noqa: F811
+    return AVAudioEngine, AVAudioFile, AVAudioPlayerNode, AVAudioFormat, AVAudioPCMBuffer, NSURL
 
 
 class AudioEngine:
@@ -36,9 +40,9 @@ class AudioEngine:
 
     def __init__(self, sample_rate: int | None = None):
         self._target_rate = sample_rate or get_config().gateway.voice.sample_rate
-        self._engine: AVAudioEngine | None = None
-        self._player: AVAudioPlayerNode | None = None
-        self._pcm_format: AVAudioFormat | None = None
+        self._engine = None
+        self._player = None
+        self._pcm_format = None
         self._queue: asyncio.Queue[bytes] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._native_rate: float = 48000.0
@@ -46,6 +50,7 @@ class AudioEngine:
 
     def start(self, queue: asyncio.Queue[bytes], loop: asyncio.AbstractEventLoop) -> None:
         """Start the audio engine with voice processing AEC."""
+        AVAudioEngine, _, AVAudioPlayerNode, AVAudioFormat, _, _ = _import_avfoundation()
         self._queue = queue
         self._loop = loop
 
@@ -126,6 +131,7 @@ class AudioEngine:
         as produced by OpenAI's streaming TTS. Converts to float32 and schedules
         on the AVAudioPlayerNode for immediate playback.
         """
+        _, _, _, _, AVAudioPCMBuffer, _ = _import_avfoundation()
         if not self._player or not self._pcm_format:
             log.warning("AudioEngine not started, cannot play")
             return
@@ -172,6 +178,7 @@ class AudioEngine:
 
     async def play_audio(self, mp3_bytes: bytes) -> None:
         """Play MP3 audio through the engine (provides AEC reference signal)."""
+        _, AVAudioFile, _, _, _, NSURL = _import_avfoundation()
         if not self._player or not self._engine:
             log.warning("AudioEngine not started, cannot play")
             return

@@ -83,6 +83,24 @@ class TestToCodexMessages:
             "output": "file.txt",
         }
 
+    def test_tool_result_with_list_content(self):
+        """tool_result with list content should be JSON-serialized."""
+        msgs = [
+            {"role": "user", "content": "run it"},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "t2", "name": "exec", "input": {"command": "echo hi"}},
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t2",
+                 "content": [{"type": "text", "text": "hi"}]},
+            ]},
+        ]
+        result = _to_codex_messages(msgs, "")
+        output_msg = result[2]
+        assert output_msg["type"] == "function_call_output"
+        assert output_msg["call_id"] == "t2"
+        assert output_msg["output"] == '[{"type": "text", "text": "hi"}]'
+
     def test_system_prompt_as_developer(self):
         result = _to_codex_messages([], "You are helpful")
         assert len(result) == 1
