@@ -1,0 +1,78 @@
+<h2>技术方案对比</h2>
+<p class="subtitle">三种前端渲染 + 后端通信架构</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>PixiJS + WebSocket（推荐）</h3>
+      <p><strong>前端：</strong>PixiJS 2D 渲染引擎 — 专为像素游戏设计，支持 sprite sheet、tile map、动画状态机。社区有大量星露谷风格的教程和插件。</p>
+      <p><strong>通信：</strong>WebSocket 双向实时通信 — MiniClaw 内嵌 aiohttp WebSocket server，推送 agent 状态变化，接收用户操作指令。</p>
+      <p><strong>地图：</strong>Tiled Map Editor 导出 JSON → PixiJS 加载渲染。小镇布局可视化编辑。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优势</h4><ul>
+          <li>PixiJS 是最成熟的 2D Web 渲染库，GPU 加速</li>
+          <li>WebSocket 实时推送，状态变化即时反映</li>
+          <li>Tiled 编辑器让地图设计可视化</li>
+          <li>生态丰富，素材和插件多</li>
+        </ul></div>
+        <div class="cons"><h4>劣势</h4><ul>
+          <li>PixiJS 学习曲线比纯 Canvas 稍高</li>
+          <li>需要前端构建工具（Vite）</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Phaser 3 游戏引擎 + WebSocket</h3>
+      <p><strong>前端：</strong>Phaser 3 — 完整的 2D 游戏引擎，内置物理引擎、场景管理、tilemap 加载器、精灵动画、路径寻路。开箱即用的游戏开发体验。</p>
+      <p><strong>通信：</strong>同样用 WebSocket，但 Phaser 有插件生态可以更方便地集成。</p>
+      <p><strong>地图：</strong>原生支持 Tiled JSON 格式，无需额外适配。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优势</h4><ul>
+          <li>游戏功能开箱即用（碰撞、寻路、场景切换）</li>
+          <li>原生 Tiled 支持</li>
+          <li>大量游戏开发教程和示例</li>
+          <li>内置精灵动画系统</li>
+        </ul></div>
+        <div class="cons"><h4>劣势</h4><ul>
+          <li>引擎较重（~1MB），对于"状态面板"来说有点过度</li>
+          <li>API 更复杂，游戏引擎的概念不一定都需要</li>
+          <li>日夜/天气效果需要自己用 shader 实现</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>原生 Canvas + SSE（轻量方案）</h3>
+      <p><strong>前端：</strong>纯 HTML5 Canvas API 手写渲染 — 不依赖任何游戏引擎，自己实现 sprite 渲染、tile map、动画循环。完全可控。</p>
+      <p><strong>通信：</strong>Server-Sent Events（SSE）单向推送状态 + HTTP POST 发送操作指令。比 WebSocket 简单，MiniClaw 已有 SSE 经验。</p>
+      <p><strong>地图：</strong>JSON 配置文件定义 tile 布局，手动解析。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优势</h4><ul>
+          <li>零依赖，最轻量</li>
+          <li>SSE 复用 MiniClaw 已有模式</li>
+          <li>完全可控，不受框架限制</li>
+        </ul></div>
+        <div class="cons"><h4>劣势</h4><ul>
+          <li>所有游戏功能需要手写（动画、碰撞、寻路）</li>
+          <li>开发周期最长</li>
+          <li>日夜循环、天气等效果实现成本高</li>
+          <li>SSE 单向，操作指令需要额外 HTTP 端点</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 2rem; padding: 1.5rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+  <h3>💡 推荐：方案 A — PixiJS + WebSocket</h3>
+  <p>PixiJS 在渲染能力和轻量性之间取得了最佳平衡。它不像 Phaser 那样是完整的游戏引擎（我们不需要物理引擎），但提供了所有像素渲染需要的能力：sprite sheet、tile map、着色器（日夜/天气效果）、动画。WebSocket 双向通信让操作响应更自然。</p>
+  <p><strong>后端架构：</strong>在 MiniClaw 的 main.py 中新增一个 aiohttp web server（和 SMS webhook 类似的模式），提供静态文件服务 + WebSocket 端点 + REST API。</p>
+</div>

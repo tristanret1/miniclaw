@@ -1,0 +1,142 @@
+<h2>设计 Part 3：环境系统 & 交互界面</h2>
+<p class="subtitle">日夜循环、天气季节、小屋内部、操作面板</p>
+
+<div class="section">
+  <h3>🌗 日夜循环</h3>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+      <h4 style="margin: 0 0 0.5rem;">时间映射</h4>
+      <ul style="margin: 0; padding-left: 1.2rem; font-size: 14px;">
+        <li><strong>同步真实时间</strong> — 小镇时间 = 本地系统时间</li>
+        <li>6:00-8:00 日出渐变（暖橙色滤镜渐退）</li>
+        <li>8:00-17:00 白天（正常亮度）</li>
+        <li>17:00-19:00 日落渐变（暖金色→暗紫色）</li>
+        <li>19:00-6:00 夜晚（深蓝色滤镜 + 星星）</li>
+      </ul>
+    </div>
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+      <h4 style="margin: 0 0 0.5rem;">视觉效果</h4>
+      <ul style="margin: 0; padding-left: 1.2rem; font-size: 14px;">
+        <li>PixiJS ColorMatrixFilter 实现全局色调</li>
+        <li>夜间：小屋窗户亮灯（agent 在线时）、路灯亮起</li>
+        <li>日出/日落：天空渐变色带 + 影子方向变化</li>
+        <li>星空：随机闪烁的小白点叠加层</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 1.5rem;">
+  <h3>🌧 天气系统</h3>
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0.8rem;">
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px; text-align: center;">
+      <div style="font-size: 2rem;">☀️</div>
+      <h4 style="margin: 0.5rem 0 0.3rem;">晴天</h4>
+      <p style="margin: 0; font-size: 12px; opacity: 0.7;">默认状态<br>明亮色调<br>鸟儿飞过</p>
+    </div>
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px; text-align: center;">
+      <div style="font-size: 2rem;">🌧</div>
+      <h4 style="margin: 0.5rem 0 0.3rem;">雨天</h4>
+      <p style="margin: 0; font-size: 12px; opacity: 0.7;">粒子雨滴<br>灰蓝滤镜<br>agent 打伞</p>
+    </div>
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px; text-align: center;">
+      <div style="font-size: 2rem;">❄️</div>
+      <h4 style="margin: 0.5rem 0 0.3rem;">雪天</h4>
+      <p style="margin: 0; font-size: 12px; opacity: 0.7;">飘落雪花<br>白色覆盖<br>地面积雪</p>
+    </div>
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px; text-align: center;">
+      <div style="font-size: 2rem;">⛈</div>
+      <h4 style="margin: 0.5rem 0 0.3rem;">雷暴</h4>
+      <p style="margin: 0; font-size: 12px; opacity: 0.7;">闪电特效<br>屏幕闪烁<br>agent 跑回屋</p>
+    </div>
+  </div>
+  <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px; margin-top: 0.8rem;">
+    <p style="margin: 0; font-size: 14px;"><strong>天气数据来源：</strong>可选两种模式——</p>
+    <ul style="margin: 0.5rem 0 0; padding-left: 1.2rem; font-size: 14px;">
+      <li><strong>真实天气：</strong>接入免费天气 API（OpenWeatherMap），同步用户所在地天气</li>
+      <li><strong>随机模拟：</strong>按季节权重随机切换，不依赖外部 API</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 1.5rem;">
+  <h3>🍂 季节系统</h3>
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0.8rem;">
+    <div style="padding: 1rem; border-radius: 8px; text-align: center; background: linear-gradient(135deg, rgba(144,238,144,0.15), rgba(60,179,113,0.15));">
+      <div style="font-size: 2rem;">🌸</div>
+      <h4 style="margin: 0.5rem 0 0.3rem;">春 3-5月</h4>
+      <p style="margin: 0; font-size: 12px; opacity: 0.8;">花朵绽放<br>嫩绿草地<br>樱花飘落粒子</p>
+    </div>
+    <div style="padding: 1rem; border-radius: 8px; text-align: center; background: linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,165,0,0.15));">
+      <div style="font-size: 2rem;">☀️</div>
+      <h4 style="margin: 0.5rem 0 0.3rem;">夏 6-8月</h4>
+      <p style="margin: 0; font-size: 12px; opacity: 0.8;">浓绿树冠<br>蝉鸣音效<br>热浪扭曲效果</p>
+    </div>
+    <div style="padding: 1rem; border-radius: 8px; text-align: center; background: linear-gradient(135deg, rgba(210,105,30,0.15), rgba(178,34,34,0.15));">
+      <div style="font-size: 2rem;">🍂</div>
+      <h4 style="margin: 0.5rem 0 0.3rem;">秋 9-11月</h4>
+      <p style="margin: 0; font-size: 12px; opacity: 0.8;">橙红树叶<br>落叶粒子<br>南瓜装饰</p>
+    </div>
+    <div style="padding: 1rem; border-radius: 8px; text-align: center; background: linear-gradient(135deg, rgba(176,224,230,0.15), rgba(135,206,235,0.15));">
+      <div style="font-size: 2rem;">❄️</div>
+      <h4 style="margin: 0.5rem 0 0.3rem;">冬 12-2月</h4>
+      <p style="margin: 0; font-size: 12px; opacity: 0.8;">积雪地面<br>光秃树木<br>烟囱白烟加重</p>
+    </div>
+  </div>
+  <p style="margin-top: 0.8rem; font-size: 14px; opacity: 0.7;">季节同步真实月份。每个季节有独立的 tile set 变体（树木、地面、花草颜色），通过替换 tilemap 图层实现切换。</p>
+</div>
+
+<div class="section" style="margin-top: 1.5rem;">
+  <h3>🏠 小屋内部视图</h3>
+  <div class="mockup">
+    <div class="mockup-header">点击小屋 → 进入室内场景</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 12px; line-height: 1.5; padding: 1.5rem; white-space: pre;">
+┌─────────────────────────────────────────────┐
+│  🍺 PeterGriffin 的小屋          [✕ 返回]   │
+├─────────────────────────────────────────────┤
+│                                             │
+│   🖼         ┌───────┐      📚              │
+│   墙画       │  🛏   │      书架             │
+│              │  床   │                      │
+│              └───────┘      ┌──────┐        │
+│                             │ 💻   │        │
+│   🪴                        │ 书桌  │        │
+│   盆栽                      │      │        │
+│                             └──────┘        │
+│                                             │
+├─────────────────────────────────────────────┤
+│ 状态: 🟢 工作中 — 正在回复 Discord 消息       │
+│ 今日任务: 3 完成 / 1 进行中 / 2 待处理        │
+│ 最近记忆: "用户询问了明天的天气预报"           │
+│ 运行时间: 4h 32m │ 消息数: 47 │ 亲密: Kokiri│
+├─────────────────────────────────────────────┤
+│ [💬 发送消息]  [⚡ 触发任务]  [⏸ 暂停 Agent] │
+└─────────────────────────────────────────────┘</div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 1.5rem;">
+  <h3>🎮 交互面板</h3>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+      <h4 style="margin: 0 0 0.5rem;">地图上的交互</h4>
+      <ul style="margin: 0; padding-left: 1.2rem; font-size: 14px;">
+        <li><strong>点击 agent</strong> → 弹出状态气泡（名字、状态、简要信息）</li>
+        <li><strong>双击 agent</strong> → 打开消息输入框，直接发消息</li>
+        <li><strong>点击小屋</strong> → 进入室内视图（详细状态 + 操作）</li>
+        <li><strong>点击告示牌</strong> → 显示全局状态仪表盘</li>
+        <li><strong>拖拽建筑</strong> → 自定义小镇布局（编辑模式）</li>
+      </ul>
+    </div>
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+      <h4 style="margin: 0 0 0.5rem;">侧边操作栏</h4>
+      <ul style="margin: 0; padding-left: 1.2rem; font-size: 14px;">
+        <li><strong>Agent 列表</strong> — 快速查看所有 agent 状态</li>
+        <li><strong>消息日志</strong> — 最近的 agent 活动流</li>
+        <li><strong>Cron 任务</strong> — 查看/触发计划任务</li>
+        <li><strong>设置齿轮</strong> — 天气模式、布局编辑、音效开关</li>
+        <li><strong>时钟</strong> — 当前时间 + 季节指示</li>
+      </ul>
+    </div>
+  </div>
+</div>

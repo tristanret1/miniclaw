@@ -1,0 +1,104 @@
+<h2>设计 Part 1：系统架构</h2>
+<p class="subtitle">MiniClaw Pixel Town — 整体架构和数据流</p>
+
+<div class="mockup">
+  <div class="mockup-header">系统架构图</div>
+  <div class="mockup-body" style="font-family: monospace; font-size: 13px; line-height: 1.6; padding: 1.5rem; white-space: pre; overflow-x: auto;">
+┌─────────────────────────────────────────────────────────┐
+│                    Browser (PixiJS)                      │
+│                                                         │
+│  ┌──────────┐  ┌──────────┐  ┌────────────────────────┐│
+│  │ TileMap   │  │ Sprites  │  │ UI Overlay (HTML/CSS)  ││
+│  │ Renderer  │  │ & Anims  │  │ ┌────────┐ ┌────────┐ ││
+│  │ (Tiled)   │  │ (agents) │  │ │ Status │ │Command │ ││
+│  │           │  │          │  │ │ Panel  │ │ Input  │ ││
+│  └──────────┘  └──────────┘  │ └────────┘ └────────┘ ││
+│                               └────────────────────────┘│
+│  ┌──────────────────────────────────────────────────┐   │
+│  │        Game State Manager (client-side)           │   │
+│  │  • agent positions, animations, pathfinding       │   │
+│  │  • day/night cycle, weather, season clock         │   │
+│  │  • idle behavior simulation (wander, visit, chat) │   │
+│  └────────────────────┬─────────────────────────────┘   │
+└───────────────────────┼─────────────────────────────────┘
+                        │ WebSocket (双向)
+┌───────────────────────┼─────────────────────────────────┐
+│              MiniClaw Python Backend                     │
+│                                                         │
+│  ┌────────────────────▼─────────────────────────────┐   │
+│  │         bot/gateway/pixeltown.py                   │   │
+│  │         (aiohttp WebSocket + Static Server)        │   │
+│  │                                                    │   │
+│  │  DOWN:  状态推送                                    │   │
+│  │  • agent_status_changed (idle/working/sleeping)    │   │
+│  │  • cron_job_started / cron_job_finished            │   │
+│  │  • message_received / message_sent                 │   │
+│  │  • agent_online / agent_offline                    │   │
+│  │                                                    │   │
+│  │  UP:    用户操作                                    │   │
+│  │  • send_message(agent, text)                       │   │
+│  │  • trigger_task(agent, task_name)                  │   │
+│  │  • toggle_agent(agent, enabled)                    │   │
+│  │  • set_town_layout(layout_data)                    │   │
+│  └────────────────────┬─────────────────────────────┘   │
+│                       │                                  │
+│  ┌────────────────────▼─────────────────────────────┐   │
+│  │            Agent Status Tracker                    │   │
+│  │  • 监听各 agent 的 Discord/cron/gateway 事件       │   │
+│  │  • 聚合状态: working / idle / sleeping / offline   │   │
+│  │  • 追踪 agent 间交互历史 → 社交亲密度              │   │
+│  └──────────────────────────────────────────────────┘   │
+│                       │                                  │
+│  ┌────────┐  ┌────────┴───┐  ┌──────────┐  ┌────────┐  │
+│  │sessions│  │  cron.db   │  │memory.db │  │agents  │  │
+│  │  .db   │  │            │  │          │  │ .json  │  │
+│  └────────┘  └────────────┘  └──────────┘  └────────┘  │
+└─────────────────────────────────────────────────────────┘</div>
+</div>
+
+<div class="section" style="margin-top: 1.5rem;">
+  <h3>核心设计决策</h3>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+      <h4 style="margin: 0 0 0.5rem;">🏗 新增模块</h4>
+      <ul style="margin: 0; padding-left: 1.2rem;">
+        <li><code>bot/gateway/pixeltown.py</code> — WebSocket gateway + static file server</li>
+        <li><code>bot/status.py</code> — Agent 状态追踪器，聚合各来源事件</li>
+        <li><code>pixeltown/</code> — 前端项目目录（PixiJS + Vite）</li>
+      </ul>
+    </div>
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+      <h4 style="margin: 0 0 0.5rem;">🔌 集成方式</h4>
+      <ul style="margin: 0; padding-left: 1.2rem;">
+        <li>和 SMS gateway 同模式：在 main.py 中作为额外 async task 启动</li>
+        <li>config.yaml 新增 <code>gateway.pixeltown</code> 配置段</li>
+        <li>复用现有 SessionManager、CronScheduler 的数据</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 1rem;">
+  <h3>WebSocket 协议示例</h3>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+      <h4 style="margin: 0 0 0.5rem;">Server → Client（状态推送）</h4>
+      <pre style="font-size: 12px; margin: 0;">{
+  "type": "agent_status",
+  "agent": "default",
+  "status": "working",
+  "detail": "Processing Discord message",
+  "since": 1711612800
+}</pre>
+    </div>
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+      <h4 style="margin: 0 0 0.5rem;">Client → Server（用户操作）</h4>
+      <pre style="font-size: 12px; margin: 0;">{
+  "type": "send_message",
+  "agent": "Kokiri",
+  "text": "帮我查一下明天的日程"
+}</pre>
+    </div>
+  </div>
+</div>

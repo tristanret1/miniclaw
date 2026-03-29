@@ -1,0 +1,112 @@
+<h2>设计 Part 2：小镇场景 & 角色系统</h2>
+<p class="subtitle">星露谷风格的像素小镇 — 场景结构、角色状态和行为系统</p>
+
+<div class="mockup">
+  <div class="mockup-header">小镇布局示意（俯视角 16×16 tile）</div>
+  <div class="mockup-body" style="font-family: monospace; font-size: 11px; line-height: 1.4; padding: 1.5rem; white-space: pre; overflow-x: auto; color: #c8d6e5;">
+🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳
+🌳                                                          🌳
+🌳    ┌─────────┐          ⛲ 广场            ┌─────────┐   🌳
+🌳    │ 🍺      │        (公共社交区)          │ 🎵      │   🌳
+🌳    │ Peter   │     ┌──────────────┐        │ Kokiri  │   🌳
+🌳    │ Griffin │     │  长椅  喷泉  │        │  的小屋  │   🌳
+🌳    │  的小屋  │     │  花圃  告示牌│        │         │   🌳
+🌳    └────┬────┘     └──────┬───────┘        └────┬────┘   🌳
+🌳         │                 │                      │        🌳
+🌳    ═════╪═════════════════╪══════════════════════╪═══     🌳
+🌳         │      小镇主路    │                      │        🌳
+🌳    ═════╪═════════════════╪══════════════════════╪═══     🌳
+🌳         │                 │                      │        🌳
+🌳    ┌────┴────┐     ┌──────┴───────┐        ┌────┴────┐   🌳
+🌳    │ 🎤      │     │  📚 图书馆   │        │ 🏪 商店  │   🌳
+🌳    │ Voice   │     │ (工作状态时   │        │ (功能    │   🌳
+🌳    │  的小屋  │     │  agent在此)  │        │  扩展用)  │   🌳
+🌳    └─────────┘     └──────────────┘        └─────────┘   🌳
+🌳                                                          🌳
+🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳🌳</div>
+</div>
+
+<div class="section" style="margin-top: 1.5rem;">
+  <h3>场景区域</h3>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.5rem;">
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+      <h4 style="margin: 0 0 0.5rem;">🏠 Agent 小屋（每人一间）</h4>
+      <ul style="margin: 0; padding-left: 1.2rem; font-size: 14px;">
+        <li>外观根据 IDENTITY.md 的 emoji/性格差异化（颜色、装饰）</li>
+        <li>小屋门口有信箱 — 显示未读消息数</li>
+        <li>点击小屋进入内部视图（家具、状态详情）</li>
+        <li>屋顶烟囱：工作中冒烟 💨，空闲时不冒</li>
+      </ul>
+    </div>
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+      <h4 style="margin: 0 0 0.5rem;">⛲ 中央广场</h4>
+      <ul style="margin: 0; padding-left: 1.2rem; font-size: 14px;">
+        <li>公共社交区 — agent 闲逛时来这里</li>
+        <li>告示牌：显示全局状态摘要（活跃 agent 数、今日任务数）</li>
+        <li>长椅：两个 agent "聊天"时坐在一起</li>
+        <li>喷泉：纯装饰 + 水流动画</li>
+      </ul>
+    </div>
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+      <h4 style="margin: 0 0 0.5rem;">📚 图书馆</h4>
+      <ul style="margin: 0; padding-left: 1.2rem; font-size: 14px;">
+        <li>agent 工作时的去处（坐在桌前看书/打字动画）</li>
+        <li>代表"正在处理任务"的视觉隐喻</li>
+        <li>窗户透出灯光 — 有 agent 在工作时亮灯</li>
+      </ul>
+    </div>
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+      <h4 style="margin: 0 0 0.5rem;">🏪 商店（预留）</h4>
+      <ul style="margin: 0; padding-left: 1.2rem; font-size: 14px;">
+        <li>为未来功能预留的建筑位置</li>
+        <li>可用于：技能商店、工具升级、agent 定制</li>
+        <li>V1 先作为装饰建筑存在</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 1.5rem;">
+  <h3>角色状态机</h3>
+  <div class="mockup">
+    <div class="mockup-header">Agent 行为状态转换</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 12px; line-height: 1.5; padding: 1.5rem; white-space: pre;">
+                    ┌──────────────────────────────┐
+                    │                              │
+                    ▼                              │
+              ┌──────────┐   收到任务/消息    ┌────┴─────┐
+   启动 ────▶ │  IDLE    │ ──────────────▶  │ WORKING  │
+              │  闲逛中   │                   │  工作中   │
+              └────┬─────┘  ◀──────────────  └──────────┘
+                   │           任务完成
+                   │
+                   │ 超过活跃时间
+                   ▼                          数据驱动
+              ┌──────────┐               ┌──────────────┐
+              │ SLEEPING │               │  SOCIALIZING │
+              │  睡觉中   │               │  社交中       │
+              └──────────┘               └──────────────┘
+                                          两个 idle agent
+                                          靠近时触发
+
+每个状态对应的像素动画：
+  IDLE      → 随机漫步、看花、坐长椅、回自己小屋
+  WORKING   → 走去图书馆、坐下打字、头上冒 ⚡ 气泡
+  SLEEPING  → 回小屋、灯灭、💤 气泡飘出窗户
+  SOCIALIZING → 两人面对面、💬 对话气泡交替出现
+  OFFLINE   → 角色半透明 + 灰色，静止不动</div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 1.5rem;">
+  <h3>数据驱动社交</h3>
+  <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+    <p style="margin: 0 0 0.5rem;"><strong>亲密度系统：</strong></p>
+    <ul style="margin: 0; padding-left: 1.2rem; font-size: 14px;">
+      <li><strong>数据来源：</strong>sessions.db 中两个 agent 被同一用户在相近时间内提到的频率</li>
+      <li><strong>影响行为：</strong>亲密度高的 agent 更频繁串门、在广场碰面时聊天时间更长</li>
+      <li><strong>视觉表现：</strong>社交时对话气泡颜色更暖（从白→粉→红），表示关系亲密</li>
+      <li><strong>衰减机制：</strong>长时间没有共同交互 → 亲密度自然下降</li>
+    </ul>
+  </div>
+</div>

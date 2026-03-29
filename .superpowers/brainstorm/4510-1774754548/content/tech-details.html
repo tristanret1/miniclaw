@@ -1,0 +1,193 @@
+<h2>设计 Part 4：技术实现细节</h2>
+<p class="subtitle">前端项目结构、后端接口、数据模型、素材方案</p>
+
+<div class="section">
+  <h3>📁 前端项目结构</h3>
+  <div class="mockup">
+    <div class="mockup-header">pixeltown/ — Vite + TypeScript + PixiJS</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 12px; line-height: 1.5; padding: 1.5rem; white-space: pre;">
+pixeltown/
+├── index.html                  # 入口页面
+├── vite.config.ts              # Vite 配置（dev server proxy → MiniClaw WS）
+├── package.json
+├── tsconfig.json
+│
+├── src/
+│   ├── main.ts                 # 入口：初始化 PixiJS App + WebSocket
+│   ├── config.ts               # 常量：tile 尺寸、动画帧率、颜色映射
+│   │
+│   ├── scenes/
+│   │   ├── TownScene.ts        # 主场景：地图渲染 + agent 管理
+│   │   └── HouseScene.ts       # 小屋内部场景
+│   │
+│   ├── entities/
+│   │   ├── Agent.ts            # Agent 精灵：状态机、动画、路径移动
+│   │   ├── Building.ts         # 建筑精灵：小屋、图书馆、商店
+│   │   └── NPC.ts              # 可复用的角色基类
+│   │
+│   ├── systems/
+│   │   ├── DayNight.ts         # 日夜循环：时间→滤镜映射
+│   │   ├── Weather.ts          # 天气系统：粒子 + 滤镜
+│   │   ├── Season.ts           # 季节系统：tile set 切换
+│   │   ├── Pathfinding.ts      # A* 寻路（基于 tile 碰撞层）
+│   │   ├── SocialAI.ts         # 空闲行为 + 社交决策
+│   │   └── IdleBehavior.ts     # 闲逛行为树（漫步、看花、坐椅子）
+│   │
+│   ├── ui/
+│   │   ├── Sidebar.ts          # 侧边操作栏（HTML overlay）
+│   │   ├── StatusBubble.ts     # 点击 agent 弹出的状态气泡
+│   │   ├── MessageInput.ts     # 消息发送输入框
+│   │   ├── Dashboard.ts        # 告示牌全局仪表盘
+│   │   └── LayoutEditor.ts     # 拖拽布局编辑器
+│   │
+│   ├── net/
+│   │   ├── WebSocketClient.ts  # WS 连接管理 + 自动重连
+│   │   └── Protocol.ts         # 消息类型定义
+│   │
+│   └── assets/
+│       ├── sprites/            # 角色 sprite sheets
+│       ├── tiles/              # 地图 tile sets（含季节变体）
+│       ├── ui/                 # UI 图标和面板素材
+│       └── maps/               # Tiled 导出的 JSON 地图
+│
+└── public/
+    └── favicon.ico</div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 1.5rem;">
+  <h3>🐍 后端新增模块</h3>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+      <h4 style="margin: 0 0 0.5rem;">bot/gateway/pixeltown.py</h4>
+      <pre style="font-size: 11px; margin: 0; white-space: pre-wrap;">职责：
+• aiohttp web server（端口可配置，默认 8765）
+• 静态文件服务：pixeltown/dist/
+• WebSocket 端点：/ws
+• REST API 端点：
+  GET  /api/agents        → agent 列表 + 当前状态
+  GET  /api/agents/:id    → 单个 agent 详情
+  GET  /api/cron           → cron job 列表
+  POST /api/agents/:id/message → 发送消息
+  POST /api/agents/:id/trigger → 触发任务
+  PUT  /api/town/layout    → 保存布局
+  GET  /api/weather        → 当前天气</pre>
+    </div>
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+      <h4 style="margin: 0 0 0.5rem;">bot/status.py</h4>
+      <pre style="font-size: 11px; margin: 0; white-space: pre-wrap;">职责：
+• AgentStatusTracker 类
+• 监听事件源：
+  - client.py: on_message → agent 开始/结束处理
+  - cron.py: job_started / job_finished
+  - gateway/*: 各 gateway 的活动事件
+• 聚合状态：working / idle / sleeping / offline
+• 计算社交亲密度：
+  - 查询 sessions.db 中 agent 交互重叠
+  - 维护 affinity_scores: dict[tuple, float]
+• 广播状态变化 → pixeltown gateway 推送</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 1.5rem;">
+  <h3>📡 WebSocket 协议完整定义</h3>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+      <h4 style="margin: 0 0 0.5rem;">Server → Client</h4>
+      <pre style="font-size: 11px; margin: 0;">// 初始化（连接后立即发送）
+{ type: "init",
+  agents: [{ id, name, emoji, status, position }],
+  weather: "sunny",
+  season: "spring",
+  town_layout: { buildings: [...] } }
+
+// 状态变化
+{ type: "agent_status",
+  agent: "default",
+  status: "working",
+  detail: "Replying to Discord #general",
+  since: 1711612800 }
+
+// 社交事件
+{ type: "social_event",
+  agents: ["default", "Kokiri"],
+  action: "chat",
+  affinity: 0.7 }
+
+// 任务事件
+{ type: "cron_event",
+  agent: "default",
+  job: "daily_summary",
+  action: "started" }
+
+// 消息通知
+{ type: "message_received",
+  agent: "Kokiri",
+  from: "user",
+  preview: "帮我查一下..." }</pre>
+    </div>
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+      <h4 style="margin: 0 0 0.5rem;">Client → Server</h4>
+      <pre style="font-size: 11px; margin: 0;">// 发送消息给 agent
+{ type: "send_message",
+  agent: "Kokiri",
+  text: "帮我查一下明天的日程",
+  channel: "pixeltown" }
+
+// 触发 cron 任务
+{ type: "trigger_task",
+  agent: "default",
+  job_id: "daily_summary" }
+
+// 切换 agent 状态
+{ type: "toggle_agent",
+  agent: "voice",
+  enabled: false }
+
+// 保存小镇布局
+{ type: "save_layout",
+  buildings: [
+    { id: "house_default",
+      x: 3, y: 2 },
+    { id: "house_kokiri",
+      x: 12, y: 2 },
+    ...
+  ] }</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 1.5rem;">
+  <h3>🎨 素材方案</h3>
+  <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+    <p style="margin: 0 0 0.5rem;"><strong>推荐素材包（itch.io CC0/free）：</strong></p>
+    <ul style="margin: 0; padding-left: 1.2rem; font-size: 14px;">
+      <li><strong>角色：</strong>16×16 或 32×32 像素人物 sprite sheet（4方向行走、坐下、睡觉动画）</li>
+      <li><strong>建筑/地图：</strong>星露谷风格的 tileset（房屋、路径、树木、花草、水体）</li>
+      <li><strong>季节变体：</strong>同一 tileset 的 4 季配色变体</li>
+      <li><strong>UI：</strong>像素风格的按钮、面板、图标、对话框</li>
+      <li><strong>天气粒子：</strong>雨滴、雪花、闪电的小型 sprite</li>
+    </ul>
+    <p style="margin: 0.8rem 0 0; font-size: 13px; opacity: 0.7;">V1 先用免费素材快速搭建，后续可按 agent 个性替换定制素材。角色通过颜色 tint 区分不同 agent。</p>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 1.5rem;">
+  <h3>⚙️ 配置（config.yaml 新增）</h3>
+  <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+    <pre style="font-size: 12px; margin: 0;">gateway:
+  pixeltown:
+    enabled: true
+    port: 8765
+    host: "127.0.0.1"
+    static_dir: "pixeltown/dist"    # Vite 构建输出
+    weather_mode: "simulated"        # "simulated" | "real"
+    weather_api_key: ""              # OpenWeatherMap (optional)
+    layout_file: "workspace/town_layout.json"
+    idle_behavior:
+      wander_interval: [10, 30]      # 闲逛间隔 (秒)
+      social_chance: 0.3             # 碰面时触发社交的概率
+      sleep_after: "23:00"           # 超过此时间 → sleeping 状态</pre>
+  </div>
+</div>
