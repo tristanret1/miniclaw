@@ -322,6 +322,14 @@ def create_bot(agent: Agent) -> discord.Client:
         if image_urls:
             log.info("multimodal message: %d image(s) + %d chars text", len(image_urls), len(content))
 
+        # Notify PixelTown status tracker
+        try:
+            from bot.gateway.pixeltown import get_tracker
+            _pt = get_tracker()
+            _pt.on_working(agent.name, f"Replying in #{getattr(message.channel, 'name', 'DM')}")
+        except Exception:
+            pass
+
         async with message.channel.typing():
             try:
                 reply_text = await llm.reply(session_key, user_content, agent=agent)
@@ -330,6 +338,12 @@ def create_bot(agent: Agent) -> discord.Client:
             except Exception as e:
                 log.error("reply error: %s", e)
                 await message.reply(f"Error: {e}")
+            finally:
+                try:
+                    from bot.gateway.pixeltown import get_tracker
+                    get_tracker().on_idle(agent.name)
+                except Exception:
+                    pass
 
     @bot.event
     async def on_message(message: discord.Message):

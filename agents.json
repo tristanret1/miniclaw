@@ -1,7 +1,7 @@
 {
   "agents": [
     {
-      "name": "default",
+      "name": "peter",
       "discord_token": "MTQ4MTQxMTgyNzI2NjIyODM4Ng.Gx6ZHS.Yk4juybveSkSyzV4BUnBnst0Zpax5Y6Gu3XSJU",
       "workspace": "workspace",
       "model": "claude-opus-4-6",

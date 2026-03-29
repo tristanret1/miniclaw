@@ -251,12 +251,34 @@ class HeartbeatConfig:
 
 
 @dataclass
+class PixelTownConfig:
+    enabled: bool = False
+    host: str = "127.0.0.1"
+    port: int = 8765
+    static_dir: str = "pixeltown/pixeltown/dist"
+    layout_file: str = "workspace/town_layout.json"
+    sleep_after: str = "23:00"
+
+    @classmethod
+    def from_dict(cls, d: dict) -> PixelTownConfig:
+        return cls(
+            enabled=_bool(d.get("enabled"), False),
+            host=_str(d.get("host"), "127.0.0.1"),
+            port=_int(d.get("port"), 8765),
+            static_dir=_str(d.get("static_dir"), "pixeltown/pixeltown/dist"),
+            layout_file=_str(d.get("layout_file"), "workspace/town_layout.json"),
+            sleep_after=_str(d.get("sleep_after"), "23:00"),
+        )
+
+
+@dataclass
 class GatewayConfig:
     voice: VoiceConfig = field(default_factory=VoiceConfig)
     volcengine: VolcengineConfig = field(default_factory=VolcengineConfig)
     sms: SMSConfig = field(default_factory=SMSConfig)
     imessage: IMessageConfig = field(default_factory=IMessageConfig)
     heartbeat: HeartbeatConfig = field(default_factory=HeartbeatConfig)
+    pixeltown: PixelTownConfig = field(default_factory=PixelTownConfig)
 
     @classmethod
     def from_dict(cls, d: dict) -> GatewayConfig:
@@ -266,6 +288,7 @@ class GatewayConfig:
             sms=SMSConfig.from_dict(d.get("sms") or {}),
             imessage=IMessageConfig.from_dict(d.get("imessage") or {}),
             heartbeat=HeartbeatConfig.from_dict(d.get("heartbeat") or {}),
+            pixeltown=PixelTownConfig.from_dict(d.get("pixeltown") or {}),
         )
 
 

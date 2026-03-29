@@ -24,7 +24,7 @@ discord:
 
 gateway:
   voice:
-    enabled: true
+    enabled: false
     sample_rate: 16000
     silence_threshold: 500
     silence_duration: 1.5
@@ -60,6 +60,13 @@ gateway:
     active_tz: ""
     ack_max_chars: 300
     isolated: true
+  pixeltown:
+    enabled: true
+    host: "127.0.0.1"
+    port: 8765
+    static_dir: "pixeltown/pixeltown/dist"
+    layout_file: "workspace/town_layout.json"
+    sleep_after: "23:00"
 
 storage:
   backend: sqlite

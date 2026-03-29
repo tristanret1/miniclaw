@@ -30,3 +30,6 @@ def imessage_key(handle: str) -> str:
 
 def sms_key(from_number: str) -> str:
     return f"sms:{from_number}"
+
+def pixeltown_key(agent_id: str) -> str:
+    return f"pixeltown:{agent_id}"

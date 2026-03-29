@@ -69,6 +69,16 @@ async def main():
             tasks.append(bot.start(agent.discord_token))
 
         _gw_cfg = get_config().gateway
+
+        if _gw_cfg.pixeltown.enabled:
+            from bot.gateway.pixeltown import start_pixeltown_server, get_tracker
+            # Register only Discord-connected agents with the status tracker
+            tracker = get_tracker()
+            for agent in agents:
+                if agent.discord_token:
+                    tracker.on_online(agent.name)
+            tasks.append(start_pixeltown_server())
+
         if _gw_cfg.sms.enabled:
             from bot.gateway.sms import start_sms_server
             tasks.append(start_sms_server())
