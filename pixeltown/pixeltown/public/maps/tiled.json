@@ -253,26 +253,7 @@
       "columns": 4,
       "imagewidth": 64,
       "imageheight": 64,
-      "image": "data:image/svg+xml;utf8,\
-<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'>\
-<rect x='0' y='0' width='16' height='16' fill='%237ec850'/>\
-<rect x='16' y='0' width='16' height='16' fill='%23b5651d'/>\
-<rect x='32' y='0' width='16' height='16' fill='%23888888'/>\
-<rect x='48' y='0' width='16' height='16' fill='%233b82f6'/>\
-<rect x='0' y='16' width='16' height='16' fill='%23f5deb3'/>\
-<rect x='16' y='16' width='16' height='16' fill='%23c9b99a'/>\
-<rect x='32' y='16' width='16' height='16' fill='%23966f33'/>\
-<rect x='48' y='16' width='16' height='16' fill='%23c0392b'/>\
-<rect x='0' y='32' width='16' height='16' fill='%23999999'/>\
-<rect x='16' y='32' width='16' height='16' fill='%23e67e22'/>\
-<rect x='32' y='32' width='16' height='16' fill='%239b7b55'/>\
-<rect x='48' y='32' width='16' height='16' fill='%23d4c5a9'/>\
-<rect x='0' y='48' width='16' height='16' fill='%23228b22'/>\
-<rect x='16' y='48' width='16' height='16' fill='%232e8b2e'/>\
-<rect x='32' y='48' width='16' height='16' fill='%238b4513'/>\
-<rect x='48' y='48' width='16' height='16' fill='%232c3e50'/>\
-</svg>"
+      "image": "tiles/demo.png"
     }
   ]
 }
-

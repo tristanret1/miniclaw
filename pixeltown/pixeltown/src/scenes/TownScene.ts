@@ -37,7 +37,7 @@ export class TownScene {
   private dayNight: DayNightSystem;
   private weather: WeatherSystem;
   private season: SeasonSystem;
-  private idleBehavior!: IdleBehaviorSystem;
+  private idleBehavior: IdleBehaviorSystem | null = null;
   private socialAI!: SocialAISystem;
 
   // collision grid (0 = walkable, 1 = blocked)
@@ -481,7 +481,7 @@ export class TownScene {
     this.agentLayer.sortChildren();
 
     // Idle behavior drives agent wander/visit decisions
-    this.idleBehavior.update(dt);
+    this.idleBehavior?.update(dt);
 
     // Social AI checks proximity and triggers socializing
     this.socialAI.update(dt);
@@ -510,7 +510,7 @@ export class TownScene {
   private applyCollisionUpdate(): void {
     this.collisionGrid = this.mergeCollisions();
     this.pathfinding.setGrid(this.collisionGrid);
-    this.idleBehavior.setCollisionGrid(this.collisionGrid);
+    this.idleBehavior?.setCollisionGrid(this.collisionGrid);
   }
 
   /** Try to load a Tiled map (if present) and replace ground/decorations + collisions. */
@@ -522,8 +522,13 @@ export class TownScene {
     }
     const { ground, decorations, waterGrid, blockGrid } = await renderTiledToContainers(map);
 
-    // Clear existing ground
+    // Clear existing ground and default buildings so tilemap视觉生效
     this.groundLayer.removeChildren();
+    this.buildingLayer.removeChildren();
+    for (const b of this.buildings.values()) {
+      // detach any listeners if needed (pixi removes on destroy)
+    }
+    this.buildings.clear();
 
     // Pre-render via cache if available
     if (this.layerCache) {
