@@ -42,6 +42,8 @@ async function init() {
   // ── Scenes ──
   const town = new TownScene(app.renderer);
   app.stage.addChild(town.container);
+  // Try loading external tilemap first (non-blocking demo fallback if absent)
+  await town.loadTilemapIfAvailable();
   town.start();
 
   // ── Camera: drag to pan + follow agent ──

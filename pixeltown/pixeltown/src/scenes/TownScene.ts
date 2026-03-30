@@ -12,6 +12,8 @@ import type { AgentInfo, BuildingLayout, CronJob, ServerMessage } from "@/net/Pr
 import { getTownMapConfig } from "@/ConfigLoader";
 import type { TownMapConfig, BuildingDef, DecorationDef } from "@/editor/types";
 import { LayerCache } from "@/renderer/LayerCache";
+import { loadTiledMap } from "@/map/TilemapLoader";
+import { renderTiledToGraphics } from "@/map/TileRenderer";
 
 /**
  * Main town scene — renders the tile map, buildings, and agents.
@@ -40,6 +42,10 @@ export class TownScene {
 
   // collision grid (0 = walkable, 1 = blocked)
   private collisionGrid: number[][];
+  private collisionTerrain!: number[][];
+  private collisionBuildings!: number[][];
+  private collisionWater!: number[][];
+  private collisionInteract!: number[][];
 
   // cron jobs cache
   private cronJobs: CronJob[] = [];
@@ -70,10 +76,12 @@ export class TownScene {
     // Depth sorting for agents (y-based painter's algorithm)
     this.agentLayer.sortableChildren = true;
 
-    // Initialize collision grid (all walkable)
-    this.collisionGrid = Array.from({ length: MAP_ROWS }, () =>
-      Array.from({ length: MAP_COLS }, () => 0),
-    );
+    // Initialize collision grids (all walkable)
+    this.collisionTerrain = Array.from({ length: MAP_ROWS }, () => Array.from({ length: MAP_COLS }, () => 0));
+    this.collisionBuildings = Array.from({ length: MAP_ROWS }, () => Array.from({ length: MAP_COLS }, () => 0));
+    this.collisionWater = Array.from({ length: MAP_ROWS }, () => Array.from({ length: MAP_COLS }, () => 0));
+    this.collisionInteract = Array.from({ length: MAP_ROWS }, () => Array.from({ length: MAP_COLS }, () => 0));
+    this.collisionGrid = this.mergeCollisions();
 
     this.pathfinding = new Pathfinding(this.collisionGrid);
     this.dayNight = new DayNightSystem();
@@ -121,9 +129,11 @@ export class TownScene {
     this.groundLayer.removeChildren();
     this.buildingLayer.removeChildren();
     this.buildings.clear();
-    this.collisionGrid = Array.from({ length: MAP_ROWS }, () =>
-      Array.from({ length: MAP_COLS }, () => 0),
-    );
+    this.collisionTerrain = Array.from({ length: MAP_ROWS }, () => Array.from({ length: MAP_COLS }, () => 0));
+    this.collisionBuildings = Array.from({ length: MAP_ROWS }, () => Array.from({ length: MAP_COLS }, () => 0));
+    this.collisionWater = Array.from({ length: MAP_ROWS }, () => Array.from({ length: MAP_COLS }, () => 0));
+    this.collisionInteract = Array.from({ length: MAP_ROWS }, () => Array.from({ length: MAP_COLS }, () => 0));
+    this.collisionGrid = this.mergeCollisions();
 
     // Render terrain from config
     this.drawGroundFromConfig(cfg);
@@ -224,7 +234,7 @@ export class TownScene {
 
         // Water collision
         if (terrain === 3) {
-          this.collisionGrid[ty][tx] = 1;
+          this.collisionWater[ty][tx] = 1;
         }
       }
     }
@@ -237,6 +247,8 @@ export class TownScene {
     } else {
       this.groundLayer.addChild(ground);
     }
+    // collisions updated from terrain: merge
+    this.applyCollisionUpdate();
 
     // Decorations from config
     if (cfg.decorations?.length) {
@@ -482,6 +494,65 @@ export class TownScene {
     this.season.updateParticles();
   }
 
+  /** Merge per-layer collisions into a single grid used by pathfinding and AI. */
+  private mergeCollisions(): number[][] {
+    const rows = this.collisionTerrain?.length ?? MAP_ROWS;
+    const cols = this.collisionTerrain?.[0]?.length ?? MAP_COLS;
+    const merged = Array.from({ length: rows }, () => Array.from({ length: cols }, () => 0));
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        merged[y][x] = (this.collisionTerrain[y]?.[x] || this.collisionBuildings[y]?.[x] || this.collisionWater[y]?.[x] || this.collisionInteract[y]?.[x]) ? 1 : 0;
+      }
+    }
+    return merged;
+  }
+
+  private applyCollisionUpdate(): void {
+    this.collisionGrid = this.mergeCollisions();
+    this.pathfinding.setGrid(this.collisionGrid);
+    this.idleBehavior.setCollisionGrid(this.collisionGrid);
+  }
+
+  /** Try to load a Tiled map (if present) and replace ground/decorations + collisions. */
+  async loadTilemapIfAvailable(): Promise<boolean> {
+    const map = await loadTiledMap();
+    if (!map) return false;
+    if (map.width !== MAP_COLS || map.height !== MAP_ROWS) {
+      console.warn("[Tilemap] Map size differs from config, using overlap area.");
+    }
+    const { ground, decorations, waterGrid, blockGrid } = renderTiledToGraphics(map);
+
+    // Clear existing ground
+    this.groundLayer.removeChildren();
+
+    // Pre-render via cache if available
+    if (this.layerCache) {
+      const gSprite = this.layerCache.toSprite(ground);
+      this.groundLayer.addChild(gSprite);
+      ground.destroy();
+      const dSprite = this.layerCache.toSprite(decorations);
+      this.groundLayer.addChild(dSprite);
+      decorations.destroy();
+    } else {
+      this.groundLayer.addChild(ground);
+      this.groundLayer.addChild(decorations);
+    }
+
+    // Apply collisions
+    this.collisionTerrain = Array.from({ length: MAP_ROWS }, () => Array.from({ length: MAP_COLS }, () => 0));
+    this.collisionWater = waterGrid;
+    this.collisionBuildings = Array.from({ length: MAP_ROWS }, () => Array.from({ length: MAP_COLS }, () => 0));
+    this.collisionInteract = Array.from({ length: MAP_ROWS }, () => Array.from({ length: MAP_COLS }, () => 0));
+    // Merge building blocks (blockGrid) into buildings layer for now
+    for (let y = 0; y < Math.min(blockGrid.length, MAP_ROWS); y++) {
+      for (let x = 0; x < Math.min(blockGrid[0].length, MAP_COLS); x++) {
+        if (blockGrid[y][x]) this.collisionBuildings[y][x] = 1;
+      }
+    }
+    this.applyCollisionUpdate();
+    return true;
+  }
+
   /** Add or update an agent from server data. */
   addOrUpdateAgent(info: AgentInfo): void {
     let agent = this.agents.get(info.id);
@@ -582,10 +653,11 @@ export class TownScene {
         const tx = building.tileX + dx;
         const ty = building.tileY + dy;
         if (ty >= 0 && ty < MAP_ROWS && tx >= 0 && tx < MAP_COLS) {
-          this.collisionGrid[ty][tx] = 1;
+          this.collisionBuildings[ty][tx] = 1;
         }
       }
     }
+    this.applyCollisionUpdate();
   }
 
   private drawGround(): void {
@@ -666,7 +738,13 @@ export class TownScene {
       this.groundLayer.addChild(sprite);
       ground.destroy();
     } else {
+    if (this.layerCache) {
+      const sprite = this.layerCache.toSprite(ground);
+      this.groundLayer.addChild(sprite);
+      ground.destroy();
+    } else {
       this.groundLayer.addChild(ground);
+    }
     }
 
     // ── Decorations layer (on top of ground, behind buildings) ──
@@ -851,5 +929,7 @@ export class TownScene {
     } else {
       this.groundLayer.addChild(decor);
     }
+    // Merge after any terrain/water updates in default map
+    this.applyCollisionUpdate();
   }
 }

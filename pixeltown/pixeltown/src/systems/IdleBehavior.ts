@@ -46,6 +46,11 @@ export class IdleBehaviorSystem {
     this.collisionGrid = collisionGrid;
   }
 
+  /** Update the collision grid reference after map/layout changes. */
+  setCollisionGrid(grid: number[][]): void {
+    this.collisionGrid = grid;
+  }
+
   /**
    * Per-frame update.
    * @param dt - delta time in ms since last frame
