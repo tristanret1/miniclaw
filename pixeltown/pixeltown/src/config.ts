@@ -29,9 +29,10 @@ export const DAY_PHASES = {
 
 /** Idle behavior weights (must sum to 1.0). */
 export const IDLE_WEIGHTS = {
-  wander: 0.4,
-  visitCottage: 0.2,
-  sitBench: 0.15,
+  wander: 0.3,
+  goHome: 0.2,
+  visitCottage: 0.15,
+  sitBench: 0.1,
   lookFlowers: 0.1,
   goPlaza: 0.15,
 } as const;

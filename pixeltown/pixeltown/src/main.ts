@@ -168,6 +168,7 @@ async function init() {
     house.show(
       { id: agent.id, name: agent.name, status: agent.status, detail: agent.detail, since: agent.since },
       town.getCronJobs(),
+      agent.indoors,
     );
     app.stage.addChild(house.container);
   }
@@ -281,6 +282,8 @@ async function init() {
           centerCameraOn(agent.container.x, agent.container.y);
         }
       }
+    } else if (activeScene === "house") {
+      house.update();
     }
   });
 

@@ -58,6 +58,9 @@ export class IdleBehaviorSystem {
         continue;
       }
 
+      // Skip agents that are indoors
+      if (agent.indoors) continue;
+
       // Skip if agent is still moving to a previous target
       if (agent.isMoving()) continue;
 
@@ -68,6 +71,15 @@ export class IdleBehaviorSystem {
           currentAction: null,
         };
         this.states.set(id, state);
+      }
+
+      // Agent just arrived at home door → enter building
+      if (state.currentAction === "goHome") {
+        const stayDuration = 60_000 + Math.random() * 120_000; // 1-3 minutes inside
+        agent.enterBuilding(stayDuration);
+        state.currentAction = null;
+        state.cooldown = stayDuration + 1000;
+        continue;
       }
 
       // Tick cooldown
@@ -102,6 +114,9 @@ export class IdleBehaviorSystem {
     switch (action) {
       case "wander":
         target = this.findRandomWalkable(agent);
+        break;
+      case "goHome":
+        target = this.findOwnCottageDoor(agent);
         break;
       case "visitCottage":
         target = this.findCottageDoor(agent);
@@ -143,6 +158,16 @@ export class IdleBehaviorSystem {
         // Keep path length reasonable (< 25 tiles)
         const dist = Math.abs(tx - agent.tileX) + Math.abs(ty - agent.tileY);
         if (dist > 2 && dist < 25) return { x: tx, y: ty };
+      }
+    }
+    return null;
+  }
+
+  /** Find the door of the agent's own cottage. */
+  private findOwnCottageDoor(agent: Agent): { x: number; y: number } | null {
+    for (const b of this.buildings.values()) {
+      if (b.type === "cottage" && b.ownerId === agent.id) {
+        return b.getDoorTile();
       }
     }
     return null;

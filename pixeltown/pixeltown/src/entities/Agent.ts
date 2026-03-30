@@ -34,6 +34,10 @@ export class Agent {
   private direction: Direction = "down";
   private moveSpeed = 1;
 
+  /** Whether the agent is currently inside a building (hidden from town view). */
+  indoors = false;
+  private indoorsTimer: ReturnType<typeof setTimeout> | null = null;
+
   private sprite: Sprite;
   private shadow: Graphics;
   private statusDot: Graphics;
@@ -213,6 +217,26 @@ export class Agent {
 
   isMoving(): boolean {
     return this.moving;
+  }
+
+  /** Agent enters a building — hide from town, re-emerge after duration. */
+  enterBuilding(durationMs: number): void {
+    this.indoors = true;
+    this.container.visible = false;
+    if (this.indoorsTimer) clearTimeout(this.indoorsTimer);
+    this.indoorsTimer = setTimeout(() => {
+      this.exitBuilding();
+    }, durationMs);
+  }
+
+  /** Agent exits a building — show on town again. */
+  exitBuilding(): void {
+    this.indoors = false;
+    this.container.visible = true;
+    if (this.indoorsTimer) {
+      clearTimeout(this.indoorsTimer);
+      this.indoorsTimer = null;
+    }
   }
 
   private setAnim(key: string): void {

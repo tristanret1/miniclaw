@@ -1,6 +1,7 @@
 import { Container, Graphics, Text } from "pixi.js";
 import { SCALED_TILE, STATUS_COLORS } from "@/config";
 import type { AgentInfo, AgentStatus, ClientMessage, CronJob } from "@/net/Protocol";
+import { Agent } from "@/entities/Agent";
 
 type SendFn = (msg: ClientMessage) => void;
 
@@ -20,6 +21,11 @@ export class HouseScene {
   private cronJobs: CronJob[] = [];
   private sendFn: SendFn;
   private onBack: (() => void) | null = null;
+
+  // Indoor agent sprite
+  private indoorAgent: Agent | null = null;
+  private indoorWanderTimer: ReturnType<typeof setInterval> | null = null;
+  private roomBounds = { x: 0, y: 0, w: 0, h: 0 };
 
   constructor(sendFn: SendFn) {
     this.container = new Container();
@@ -46,12 +52,16 @@ export class HouseScene {
     this.onBack = cb;
   }
 
-  show(agent: AgentInfo, cronJobs: CronJob[] = []): void {
+  show(agent: AgentInfo, cronJobs: CronJob[] = [], isIndoors = false): void {
     this.agent = agent;
     this.cronJobs = cronJobs;
     // Redraw room with agent-specific theme
     this.container.removeChildren();
     this.drawRoom(agent.id);
+    // Only show agent sprite if they're actually inside
+    if (isIndoors) {
+      this.spawnIndoorAgent(agent);
+    }
     this.container.visible = true;
     this.uiEl.style.display = "block";
     this.renderUI();
@@ -60,6 +70,84 @@ export class HouseScene {
   hide(): void {
     this.container.visible = false;
     this.uiEl.style.display = "none";
+    this.clearIndoorAgent();
+  }
+
+  /** Called every frame from the game loop when house scene is active. */
+  update(): void {
+    if (this.indoorAgent) {
+      this.indoorAgent.update();
+    }
+  }
+
+  private spawnIndoorAgent(info: AgentInfo): void {
+    this.clearIndoorAgent();
+    const T = SCALED_TILE;
+    // Place agent in the middle of the room
+    const startTileX = Math.floor((this.roomBounds.x + this.roomBounds.w / 2) / T);
+    const startTileY = Math.floor((this.roomBounds.y + this.roomBounds.h * 0.6) / T);
+    this.indoorAgent = new Agent(info.id, info.name, startTileX, startTileY, info.color);
+    this.indoorAgent.setStatus(info.status, info.detail, info.since);
+    this.container.addChild(this.indoorAgent.container);
+
+    // Wander around the room every few seconds
+    this.startIndoorWander();
+  }
+
+  private clearIndoorAgent(): void {
+    if (this.indoorWanderTimer) {
+      clearInterval(this.indoorWanderTimer);
+      this.indoorWanderTimer = null;
+    }
+    if (this.indoorAgent) {
+      this.container.removeChild(this.indoorAgent.container);
+      this.indoorAgent = null;
+    }
+  }
+
+  private startIndoorWander(): void {
+    const T = SCALED_TILE;
+    const wander = () => {
+      if (!this.indoorAgent) return;
+      // Pick a random walkable point within room bounds
+      const minTX = Math.floor(this.roomBounds.x / T) + 1;
+      const maxTX = Math.floor((this.roomBounds.x + this.roomBounds.w) / T) - 1;
+      const minTY = Math.floor((this.roomBounds.y + this.roomBounds.h * 0.35) / T);
+      const maxTY = Math.floor((this.roomBounds.y + this.roomBounds.h) / T) - 1;
+
+      if (maxTX <= minTX || maxTY <= minTY) return;
+
+      const targetX = minTX + Math.floor(Math.random() * (maxTX - minTX));
+      const targetY = minTY + Math.floor(Math.random() * (maxTY - minTY));
+
+      // Simple straight-line path (no obstacles in room)
+      const path: { x: number; y: number }[] = [];
+      const curX = this.indoorAgent.tileX;
+      const curY = this.indoorAgent.tileY;
+      path.push({ x: curX, y: curY });
+
+      // Walk horizontally first, then vertically
+      const dx = targetX > curX ? 1 : -1;
+      let x = curX;
+      while (x !== targetX) {
+        x += dx;
+        path.push({ x, y: curY });
+      }
+      const dy = targetY > curY ? 1 : -1;
+      let y = curY;
+      while (y !== targetY) {
+        y += dy;
+        path.push({ x: targetX, y });
+      }
+
+      if (path.length > 1) {
+        this.indoorAgent.setPath(path);
+      }
+    };
+
+    // First wander after a short delay, then every 3-6 seconds
+    setTimeout(wander, 1000);
+    this.indoorWanderTimer = setInterval(wander, 3000 + Math.random() * 3000);
   }
 
   updateAgent(agent: AgentInfo): void {
@@ -114,6 +202,9 @@ export class HouseScene {
     const PX = T / 16;
     const wallH = T * 2.5;
     const dividerX = ox + roomW * 0.55;
+
+    // Store room bounds for indoor agent wandering
+    this.roomBounds = { x: ox, y: oy, w: roomW, h: roomH };
 
     const g = new Graphics();
 
