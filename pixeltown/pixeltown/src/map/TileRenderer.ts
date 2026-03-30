@@ -14,7 +14,9 @@ interface TilesetTextures {
 }
 
 async function buildTilesetTextures(ts: TiledTileset): Promise<TilesetTextures> {
-  const baseTex = await Assets.load<Texture>(ts.image);
+  // Ensure absolute path so it works under /town/ subpath
+  const imgPath = ts.image.startsWith("/") || ts.image.startsWith("http") ? ts.image : "/" + ts.image;
+  const baseTex = await Assets.load<Texture>(imgPath);
   const textures: Texture[] = [];
   for (let i = 0; i < ts.tilecount; i++) {
     const col = i % ts.columns;
