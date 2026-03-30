@@ -104,7 +104,7 @@ export class SocialAISystem {
 
   private checkProximity(): void {
     const idleAgents = [...this.agents.entries()].filter(
-      ([, a]) => a.status === "idle" && !a.isMoving(),
+      ([, a]) => a.status === "idle" && !a.isMoving() && !a.indoors,
     );
 
     // Check all pairs

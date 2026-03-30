@@ -517,7 +517,7 @@ export class TownScene {
       { id: "cottage-2", type: "cottage", x: 11, y: 3, owner: "agent-2", variant: 1 },
       { id: "cottage-3", type: "cottage", x: 19, y: 3, owner: "agent-3", variant: 2 },
       { id: "library", type: "library", x: 28, y: 3 },
-      { id: "plaza", type: "plaza", x: 14, y: 14 },
+      { id: "plaza", type: "plaza", x: 13, y: 23 },
       { id: "shop", type: "shop", x: 30, y: 14 },
     ];
 

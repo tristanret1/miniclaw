@@ -1,4 +1,5 @@
 import { Application } from "pixi.js";
+import { SCALED_TILE, MAP_COLS, MAP_ROWS } from "@/config";
 import { TownScene } from "@/scenes/TownScene";
 import { HouseScene } from "@/scenes/HouseScene";
 import { WebSocketClient } from "@/net/WebSocketClient";
@@ -65,10 +66,11 @@ async function init() {
     const dy = e.clientY - dragStartY;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragMoved = true;
     if (dragMoved) {
-      // Manual drag breaks follow
       followAgentId = null;
-      town.container.x = camStartX + dx;
-      town.container.y = camStartY + dy;
+      const mapW = MAP_COLS * SCALED_TILE;
+      const mapH = MAP_ROWS * SCALED_TILE;
+      town.container.x = Math.min(0, Math.max(canvas.clientWidth - mapW, camStartX + dx));
+      town.container.y = Math.min(0, Math.max(canvas.clientHeight - mapH, camStartY + dy));
     }
   });
 
@@ -86,10 +88,20 @@ async function init() {
     followAgentId = agentId;
   }
 
-  /** Smoothly center camera on a world position. */
+  /** Smoothly center camera on a world position, clamped to map bounds. */
   function centerCameraOn(worldX: number, worldY: number): void {
-    const targetX = canvas.clientWidth / 2 - worldX;
-    const targetY = canvas.clientHeight / 2 - worldY;
+    const vw = canvas.clientWidth;
+    const vh = canvas.clientHeight;
+    const mapW = MAP_COLS * SCALED_TILE;
+    const mapH = MAP_ROWS * SCALED_TILE;
+
+    let targetX = vw / 2 - worldX;
+    let targetY = vh / 2 - worldY;
+
+    // Clamp so map edges don't go past viewport edges
+    targetX = Math.min(0, Math.max(vw - mapW, targetX));
+    targetY = Math.min(0, Math.max(vh - mapH, targetY));
+
     // Smooth lerp
     town.container.x += (targetX - town.container.x) * 0.08;
     town.container.y += (targetY - town.container.y) * 0.08;
@@ -284,6 +296,14 @@ async function init() {
       }
     } else if (activeScene === "house") {
       house.update();
+      // Check if agent left the house while we're viewing it
+      const viewingId = house.getCurrentAgentId();
+      if (viewingId) {
+        const townAgent = town.getAgents().get(viewingId);
+        if (townAgent && !townAgent.indoors) {
+          house.removeIndoorAgent();
+        }
+      }
     }
   });
 

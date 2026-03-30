@@ -80,6 +80,11 @@ export class HouseScene {
     }
   }
 
+  /** Remove the indoor agent sprite (e.g. when agent exits the building). */
+  removeIndoorAgent(): void {
+    this.clearIndoorAgent();
+  }
+
   private spawnIndoorAgent(info: AgentInfo): void {
     this.clearIndoorAgent();
     const T = SCALED_TILE;

@@ -76,6 +76,7 @@ export class IdleBehaviorSystem {
       // Agent just arrived at home door → enter building
       if (state.currentAction === "goHome") {
         const stayDuration = 60_000 + Math.random() * 120_000; // 1-3 minutes inside
+        console.log(`[Idle] ${agent.name} enters home (${Math.round(stayDuration / 1000)}s)`);
         agent.enterBuilding(stayDuration);
         state.currentAction = null;
         state.cooldown = stayDuration + 1000;
@@ -89,6 +90,7 @@ export class IdleBehaviorSystem {
       // Pick and execute an action
       const action = this.pickAction();
       state.currentAction = action;
+      console.log(`[Idle] ${agent.name} → ${action}`);
 
       const moved = this.executeAction(agent, action);
       // If pathfinding failed, retry quickly instead of waiting full interval

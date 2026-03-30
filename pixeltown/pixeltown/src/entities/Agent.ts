@@ -231,6 +231,7 @@ export class Agent {
 
   /** Agent exits a building — show on town again. */
   exitBuilding(): void {
+    console.log(`[Idle] ${this.name} exits home`);
     this.indoors = false;
     this.container.visible = true;
     if (this.indoorsTimer) {
