@@ -140,6 +140,7 @@ export class TownScene {
       );
       this.buildings.set(bdef.id, building);
       this.buildingLayer.addChild(building.container);
+      if (this.layerCache) building.prerender(this.layerCache);
       this.markCollision(building);
 
       if (bdef.type === "cottage") {
@@ -552,6 +553,7 @@ export class TownScene {
       const building = new Building(def.id, def.type, def.x, def.y, def.owner, def.variant);
       this.buildings.set(def.id, building);
       this.buildingLayer.addChild(building.container);
+      if (this.layerCache) building.prerender(this.layerCache);
       this.markCollision(building);
 
       // Wire cottage clicks — read ownerId at click time (may be reassigned by assignCottageOwners)

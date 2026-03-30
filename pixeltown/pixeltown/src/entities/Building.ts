@@ -1,5 +1,6 @@
-import { Container, Graphics, Text } from "pixi.js";
+import { Container, Graphics, Text, type Sprite } from "pixi.js";
 import { SCALED_TILE } from "@/config";
+import { LayerCache } from "@/renderer/LayerCache";
 
 export type BuildingType = "cottage" | "library" | "shop" | "plaza";
 
@@ -21,6 +22,7 @@ export class Building {
   ownerId?: string;
 
   private body: Graphics;
+  private bodySprite: Sprite | null = null;
   private label: Text;
   private chimneySmoke = false;
   private windowGlow = false;
@@ -77,6 +79,18 @@ export class Building {
       this.container.eventMode = "static";
       this.container.cursor = "pointer";
     }
+  }
+
+  /**
+   * Prerender the static building body into a texture to reduce per-frame draw cost.
+   */
+  prerender(cache: LayerCache): void {
+    if (this.bodySprite) return; // already prerendered
+    const sprite = cache.toSprite(this.body);
+    const idx = this.container.getChildIndex(this.body);
+    this.body.visible = false;
+    this.bodySprite = sprite;
+    this.container.addChildAt(sprite, idx);
   }
 
   setChimneySmoke(active: boolean): void {
