@@ -10,6 +10,7 @@ import { LayoutEditor } from "@/ui/LayoutEditor";
 import type { AgentInfo, ServerMessage } from "@/net/Protocol";
 import { loadEditorConfig, getCharacterConfig } from "@/ConfigLoader";
 import { applyCharacterConfig } from "@/sprites/SpriteConfig";
+import { preloadCoreAssets } from "@/assets/Preloader";
 
 /** Demo agents shown when no backend is connected. */
 const DEMO_AGENTS: AgentInfo[] = [
@@ -23,6 +24,8 @@ async function init() {
   await loadEditorConfig();
   const charCfg = getCharacterConfig();
   if (charCfg) applyCharacterConfig(charCfg);
+  // Preload core assets (spritesheets)
+  await preloadCoreAssets();
 
   const app = new Application();
   await app.init({
@@ -37,7 +40,7 @@ async function init() {
   const overlayEl = document.getElementById("ui-overlay")!;
 
   // ── Scenes ──
-  const town = new TownScene();
+  const town = new TownScene(app.renderer);
   app.stage.addChild(town.container);
   town.start();
 

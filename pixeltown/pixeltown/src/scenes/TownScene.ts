@@ -1,4 +1,4 @@
-import { Container, Graphics } from "pixi.js";
+import { Container, Graphics, type Renderer } from "pixi.js";
 import { SCALED_TILE, MAP_COLS, MAP_ROWS } from "@/config";
 import { Agent } from "@/entities/Agent";
 import { Building, type BuildingType } from "@/entities/Building";
@@ -11,6 +11,7 @@ import { SocialAISystem } from "@/systems/SocialAI";
 import type { AgentInfo, BuildingLayout, CronJob, ServerMessage } from "@/net/Protocol";
 import { getTownMapConfig } from "@/ConfigLoader";
 import type { TownMapConfig, BuildingDef, DecorationDef } from "@/editor/types";
+import { LayerCache } from "@/renderer/LayerCache";
 
 /**
  * Main town scene — renders the tile map, buildings, and agents.
@@ -51,7 +52,9 @@ export class TownScene {
   private onPlazaClick: (() => void) | null = null;
   private onSubtitle: ((agentName: string, text: string) => void) | null = null;
 
-  constructor() {
+  private layerCache: LayerCache | null = null;
+
+  constructor(renderer?: Renderer) {
     this.container = new Container();
 
     this.groundLayer = new Container();
@@ -64,6 +67,9 @@ export class TownScene {
     this.container.addChild(this.agentLayer);
     this.container.addChild(this.effectLayer);
 
+    // Depth sorting for agents (y-based painter's algorithm)
+    this.agentLayer.sortableChildren = true;
+
     // Initialize collision grid (all walkable)
     this.collisionGrid = Array.from({ length: MAP_ROWS }, () =>
       Array.from({ length: MAP_COLS }, () => 0),
@@ -73,6 +79,10 @@ export class TownScene {
     this.dayNight = new DayNightSystem();
     this.weather = new WeatherSystem();
     this.season = new SeasonSystem();
+
+    if (renderer) {
+      this.layerCache = new LayerCache(renderer);
+    }
 
     // Add weather and season particle containers to effect layer
     this.effectLayer.addChild(this.weather.getParticleContainer());
@@ -218,7 +228,14 @@ export class TownScene {
       }
     }
 
-    this.groundLayer.addChild(ground);
+    // Pre-render ground to texture if cache available
+    if (this.layerCache) {
+      const sprite = this.layerCache.toSprite(ground);
+      this.groundLayer.addChild(sprite);
+      ground.destroy();
+    } else {
+      this.groundLayer.addChild(ground);
+    }
 
     // Decorations from config
     if (cfg.decorations?.length) {
@@ -228,7 +245,13 @@ export class TownScene {
         const dy = d.y * SCALED_TILE;
         this.drawDecoration(decor, d.type, dx, dy, PX, rand);
       }
-      this.groundLayer.addChild(decor);
+      if (this.layerCache) {
+        const dSprite = this.layerCache.toSprite(decor);
+        this.groundLayer.addChild(dSprite);
+        decor.destroy();
+      } else {
+        this.groundLayer.addChild(decor);
+      }
     }
   }
 
@@ -438,7 +461,11 @@ export class TownScene {
     // Update agent movement
     for (const agent of this.agents.values()) {
       agent.update();
+      // y-based depth sort key
+      (agent.container as any).zIndex = agent.container.y | 0;
     }
+    // Sort once per frame after updates
+    this.agentLayer.sortChildren();
 
     // Idle behavior drives agent wander/visit decisions
     this.idleBehavior.update(dt);
@@ -632,7 +659,13 @@ export class TownScene {
     ground.lineTo(16 * SCALED_TILE, totalH);
     ground.stroke({ width: 1, color: 0x8b7355, alpha: 0.5 });
 
-    this.groundLayer.addChild(ground);
+    if (this.layerCache) {
+      const sprite = this.layerCache.toSprite(ground);
+      this.groundLayer.addChild(sprite);
+      ground.destroy();
+    } else {
+      this.groundLayer.addChild(ground);
+    }
 
     // ── Decorations layer (on top of ground, behind buildings) ──
     const decor = new Graphics();
@@ -809,6 +842,12 @@ export class TownScene {
       decor.fill(0x8b6914);
     }
 
-    this.groundLayer.addChild(decor);
+    if (this.layerCache) {
+      const dSprite = this.layerCache.toSprite(decor);
+      this.groundLayer.addChild(dSprite);
+      decor.destroy();
+    } else {
+      this.groundLayer.addChild(decor);
+    }
   }
 }
