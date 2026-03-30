@@ -18,10 +18,14 @@ async function buildTilesetTextures(ts: TiledTileset): Promise<TilesetTextures> 
   const imgPath = ts.image.startsWith("/") || ts.image.startsWith("http") ? ts.image : "/" + ts.image;
   const baseTex = await Assets.load<Texture>(imgPath);
   const textures: Texture[] = [];
+  const margin = ts.margin ?? 0;
+  const spacing = ts.spacing ?? 0;
   for (let i = 0; i < ts.tilecount; i++) {
     const col = i % ts.columns;
     const row = Math.floor(i / ts.columns);
-    const frame = new Rectangle(col * ts.tilewidth, row * ts.tileheight, ts.tilewidth, ts.tileheight);
+    const sx = margin + col * (ts.tilewidth + spacing);
+    const sy = margin + row * (ts.tileheight + spacing);
+    const frame = new Rectangle(sx, sy, ts.tilewidth, ts.tileheight);
     textures.push(new Texture({ source: baseTex.source, frame }));
   }
   return { tileset: ts, textures };

@@ -9,6 +9,8 @@ export interface TiledTileset {
   columns: number;
   tilecount: number;
   name: string;
+  margin?: number;
+  spacing?: number;
 }
 
 export interface TiledLayer {
@@ -30,4 +32,3 @@ export interface TiledMap {
   layers: TiledLayer[];
   tilesets: TiledTileset[];
 }
-
