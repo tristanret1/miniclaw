@@ -164,7 +164,7 @@ async function init() {
   const statusBubble = new StatusBubble(overlayEl);
   const dashboard = new Dashboard(overlayEl, sendFn);
   const layoutEditor = new LayoutEditor(overlayEl, sendFn);
-  const house = new HouseScene(sendFn);
+  const house = new HouseScene(sendFn, app.renderer);
   house.attachUI(overlayEl);
 
   // ── Scene Management ──

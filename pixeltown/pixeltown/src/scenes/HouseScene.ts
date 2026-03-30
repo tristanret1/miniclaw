@@ -1,7 +1,10 @@
-import { Container, Graphics, Text } from "pixi.js";
+import { Container, Graphics, Text, type Renderer } from "pixi.js";
 import { SCALED_TILE, STATUS_COLORS } from "@/config";
 import type { AgentInfo, AgentStatus, ClientMessage, CronJob } from "@/net/Protocol";
 import { Agent } from "@/entities/Agent";
+import { loadTiledMap } from "@/map/TilemapLoader";
+import { prepareTilesetTextures, renderNamedLayerToContainer } from "@/map/TileRenderer";
+import { LayerCache } from "@/renderer/LayerCache";
 
 type SendFn = (msg: ClientMessage) => void;
 
@@ -26,10 +29,14 @@ export class HouseScene {
   private indoorAgent: Agent | null = null;
   private indoorWanderTimer: ReturnType<typeof setInterval> | null = null;
   private roomBounds = { x: 0, y: 0, w: 0, h: 0 };
+  private roomVectorLayer: Graphics | null = null;
+  private interiorLayer: Container | null = null;
+  private layerCache: LayerCache | null = null;
 
-  constructor(sendFn: SendFn) {
+  constructor(sendFn: SendFn, renderer?: Renderer) {
     this.container = new Container();
     this.sendFn = sendFn;
+    if (renderer) this.layerCache = new LayerCache(renderer);
 
     // Create UI element (will be attached to overlay when shown)
     this.uiEl = document.createElement("div");
@@ -58,6 +65,8 @@ export class HouseScene {
     // Redraw room with agent-specific theme
     this.container.removeChildren();
     this.drawRoom(agent.id);
+    // Try to replace vector room with tilemap interior layer asynchronously
+    void this.tryLoadInteriorTilemap();
     // Only show agent sprite if they're actually inside
     if (isIndoors) {
       this.spawnIndoorAgent(agent);
@@ -107,6 +116,45 @@ export class HouseScene {
     if (this.indoorAgent) {
       this.container.removeChild(this.indoorAgent.container);
       this.indoorAgent = null;
+    }
+  }
+
+  /** Attempt to load and render the 'interior' tile layer from tilemap, replacing the vector room. */
+  private async tryLoadInteriorTilemap(): Promise<void> {
+    try {
+      const map = await loadTiledMap();
+      if (!map) return;
+      const tilesets = await prepareTilesetTextures(map);
+      const interior = renderNamedLayerToContainer(map, "interior", tilesets);
+      if (!interior.children.length) return; // no interior tiles
+
+      // Position the interior centered with top margin like vector room
+      const bounds = interior.getLocalBounds();
+      const margin = SCALED_TILE;
+      const viewW = window.innerWidth;
+      const viewH = window.innerHeight;
+      interior.x = Math.floor((viewW - bounds.width) / 2);
+      interior.y = margin;
+
+      // Replace previous vector layer if present
+      if (this.roomVectorLayer) {
+        this.container.removeChild(this.roomVectorLayer);
+        this.roomVectorLayer.destroy();
+        this.roomVectorLayer = null;
+      }
+      // Pre-render interior to texture if layerCache available
+      this.interiorLayer = interior;
+      if (this.layerCache) {
+        const sprite = this.layerCache.toSprite(interior);
+        this.container.addChildAt(sprite, 0);
+      } else {
+        this.container.addChildAt(interior, 0);
+      }
+
+      // Update room bounds for indoor wander
+      this.roomBounds = { x: interior.x, y: interior.y, w: bounds.width, h: bounds.height };
+    } catch {
+      // ignore
     }
   }
 
@@ -212,6 +260,7 @@ export class HouseScene {
     this.roomBounds = { x: ox, y: oy, w: roomW, h: roomH };
 
     const g = new Graphics();
+    this.roomVectorLayer = g;
 
     // ── Floor ──
     g.rect(ox, oy + wallH, dividerX - ox, roomH - wallH);

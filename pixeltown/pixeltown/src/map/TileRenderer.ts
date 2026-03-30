@@ -102,3 +102,50 @@ export async function renderTiledToContainers(map: TiledMap): Promise<{ ground: 
   for (const layer of map.layers) drawLayer(layer);
   return { ground, decorations, waterGrid, blockGrid };
 }
+
+/** Prepare tileset textures once for reuse across custom renders. */
+export async function prepareTilesetTextures(map: TiledMap) {
+  const tilesetTextures: TilesetTextures[] = [];
+  for (const ts of map.tilesets) {
+    tilesetTextures.push(await buildTilesetTextures(ts));
+  }
+  return tilesetTextures;
+}
+
+/** Render a named tile layer to a single container (no collision extraction). */
+export function renderNamedLayerToContainer(map: TiledMap, layerName: string, tilesets: TilesetTextures[]): Container {
+  const cont = new Container();
+  const layer = map.layers.find((l) => l.type === "tilelayer" && l.name.toLowerCase().includes(layerName.toLowerCase()));
+  if (!layer || !layer.data) return cont;
+
+  const pickTexture = (rawGid: number): { tex: Texture; flipH: boolean; flipV: boolean; flipD: boolean } | null => {
+    const flipH = (rawGid & FLIPPED_HORIZONTALLY_FLAG) !== 0;
+    const flipV = (rawGid & FLIPPED_VERTICALLY_FLAG) !== 0;
+    const flipD = (rawGid & FLIPPED_DIAGONALLY_FLAG) !== 0;
+    const found = findTilesetForGid(map.tilesets, rawGid);
+    if (!found) return null;
+    const pack = tilesets.find((p) => p.tileset === found.ts)!;
+    const tex = pack.textures[found.localId];
+    if (!tex) return null;
+    return { tex, flipH, flipV, flipD };
+  };
+
+  for (let ty = 0; ty < layer.height; ty++) {
+    for (let tx = 0; tx < layer.width; tx++) {
+      const idx = ty * layer.width + tx;
+      const rawGid = layer.data[idx] || 0;
+      if (rawGid === 0) continue;
+      const picked = pickTexture(rawGid);
+      if (!picked) continue;
+      const sprite = new Sprite(picked.tex);
+      sprite.x = tx * SCALED_TILE;
+      sprite.y = ty * SCALED_TILE;
+      sprite.width = SCALED_TILE;
+      sprite.height = SCALED_TILE;
+      if (picked.flipH) sprite.scale.x *= -1, sprite.x += SCALED_TILE;
+      if (picked.flipV) sprite.scale.y *= -1, sprite.y += SCALED_TILE;
+      cont.addChild(sprite);
+    }
+  }
+  return cont;
+}
