@@ -1,4 +1,4 @@
-import { Graphics, Renderer, RenderTexture, Sprite } from "pixi.js";
+import { Renderer, RenderTexture, Sprite } from "pixi.js";
 
 /**
  * LayerCache — utilities to prerender static layers (Graphics) into textures.
@@ -15,7 +15,7 @@ export class LayerCache {
    * Render a Graphics (or any display object) to a Sprite backed by RenderTexture.
    * The source is not mutated; caller can remove/destroy it after calling.
    */
-  toSprite(source: Graphics): Sprite {
+  toSprite(source: any): Sprite {
     // Compute local bounds to size the render texture tightly
     const bounds = source.getLocalBounds();
     const rt = RenderTexture.create({
@@ -40,4 +40,3 @@ export class LayerCache {
     return sprite;
   }
 }
-

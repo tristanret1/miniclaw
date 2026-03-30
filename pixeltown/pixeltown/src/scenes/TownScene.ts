@@ -13,7 +13,7 @@ import { getTownMapConfig } from "@/ConfigLoader";
 import type { TownMapConfig, BuildingDef, DecorationDef } from "@/editor/types";
 import { LayerCache } from "@/renderer/LayerCache";
 import { loadTiledMap } from "@/map/TilemapLoader";
-import { renderTiledToGraphics } from "@/map/TileRenderer";
+import { renderTiledToContainers } from "@/map/TileRenderer";
 
 /**
  * Main town scene — renders the tile map, buildings, and agents.
@@ -520,7 +520,7 @@ export class TownScene {
     if (map.width !== MAP_COLS || map.height !== MAP_ROWS) {
       console.warn("[Tilemap] Map size differs from config, using overlap area.");
     }
-    const { ground, decorations, waterGrid, blockGrid } = renderTiledToGraphics(map);
+    const { ground, decorations, waterGrid, blockGrid } = await renderTiledToContainers(map);
 
     // Clear existing ground
     this.groundLayer.removeChildren();
@@ -529,10 +529,8 @@ export class TownScene {
     if (this.layerCache) {
       const gSprite = this.layerCache.toSprite(ground);
       this.groundLayer.addChild(gSprite);
-      ground.destroy();
       const dSprite = this.layerCache.toSprite(decorations);
       this.groundLayer.addChild(dSprite);
-      decorations.destroy();
     } else {
       this.groundLayer.addChild(ground);
       this.groundLayer.addChild(decorations);
@@ -738,13 +736,7 @@ export class TownScene {
       this.groundLayer.addChild(sprite);
       ground.destroy();
     } else {
-    if (this.layerCache) {
-      const sprite = this.layerCache.toSprite(ground);
-      this.groundLayer.addChild(sprite);
-      ground.destroy();
-    } else {
       this.groundLayer.addChild(ground);
-    }
     }
 
     // ── Decorations layer (on top of ground, behind buildings) ──
