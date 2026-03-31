@@ -322,7 +322,7 @@ def create_bot(agent: Agent) -> discord.Client:
         sender = message.author.display_name
         timestamp = message.created_at.strftime("%Y-%m-%d %H:%M")
         channel_name = getattr(message.channel, "name", "DM")
-        meta = f"[{sender} · #{channel_name} · {timestamp}]\n"
+        meta = f"[{sender} (ID:{message.author.id}) · #{channel_name} · {timestamp}]\n"
         content = meta + content
 
         user_content = build_user_content(content, image_urls if image_urls else None)
