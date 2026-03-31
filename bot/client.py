@@ -320,7 +320,10 @@ def create_bot(agent: Agent) -> discord.Client:
 
         # Prepend sender metadata so the LLM knows who sent the message and when
         sender = message.author.display_name
-        timestamp = message.created_at.strftime("%Y-%m-%d %H:%M")
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(get_config().services.cron.timezone)
+        local_time = message.created_at.astimezone(tz)
+        timestamp = local_time.strftime("%Y-%m-%d %H:%M %Z")
         channel_name = getattr(message.channel, "name", "DM")
         meta = f"[{sender} (ID:{message.author.id}) · #{channel_name} · {timestamp}]\n"
         content = meta + content
@@ -350,7 +353,7 @@ def create_bot(agent: Agent) -> discord.Client:
             return
 
         # 5% chance to ignore messages from other bots
-        if message.author.bot and random.random() < 0.05:
+        if message.author.bot and random.random() < 0.01:
             log.debug("ignoring bot message from %s (5%% skip)", message.author)
             return
 
