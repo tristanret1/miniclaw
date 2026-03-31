@@ -89,6 +89,7 @@ def test_config():
                 "service": "auto",
             },
             "heartbeat": {"enabled": False},
+            "api": {"enabled": False},
         },
         "services": {
             "google_calendar": {

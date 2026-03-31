@@ -60,13 +60,11 @@ gateway:
     active_tz: ""
     ack_max_chars: 300
     isolated: true
-  pixeltown:
-    enabled: true
+  api:
+    enabled: false
     host: "127.0.0.1"
-    port: 8765
-    static_dir: "pixeltown/pixeltown/dist"
-    layout_file: "workspace/town_layout.json"
-    sleep_after: "23:00"
+    port: 8766
+    api_key: ""
 
 storage:
   backend: sqlite
