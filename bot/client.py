@@ -317,6 +317,14 @@ def create_bot(agent: Agent) -> discord.Client:
                 content = build_skill_user_message(skill, args)
 
         session_key = discord_key(message.channel.id, message.author.id)
+
+        # Prepend sender metadata so the LLM knows who sent the message and when
+        sender = message.author.display_name
+        timestamp = message.created_at.strftime("%Y-%m-%d %H:%M")
+        channel_name = getattr(message.channel, "name", "DM")
+        meta = f"[{sender} · #{channel_name} · {timestamp}]\n"
+        content = meta + content
+
         user_content = build_user_content(content, image_urls if image_urls else None)
 
         if image_urls:
