@@ -63,6 +63,91 @@ class Agent:
         return get_config().llm.provider
 
 
+async def _load_from_db() -> list[Agent] | None:
+    """Try to load agents from PostgreSQL. Returns None if not available."""
+    from bot.storage.db import use_postgres, get_pool
+
+    if not use_postgres():
+        return None
+
+    try:
+        pool = await get_pool()
+    except Exception as e:
+        log.warning("failed to connect to PostgreSQL for agent loading: %s", e)
+        return None
+
+    if pool is None:
+        return None
+
+    agents = []
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, name, display_name, emoji, config, enabled FROM agents WHERE enabled = true"
+        )
+
+        for row in rows:
+            import json as _json
+            config_raw = row["config"]
+            config_dict = _json.loads(config_raw) if isinstance(config_raw, str) else dict(config_raw)
+
+            discord_cfg = config_dict.get("discord", {})
+            discord_token = discord_cfg.get("bot_token", "")
+
+            llm_cfg = config_dict.get("llm", {})
+            provider = llm_cfg.get("provider", "")
+            model = ""
+            if provider == "codex":
+                model = llm_cfg.get("codex", {}).get("model", "")
+            elif provider == "anthropic":
+                model = llm_cfg.get("anthropic", {}).get("model", "")
+
+            # Load latest documents
+            soul = identity = user_doc = ""
+            for doc_type in ("soul", "identity", "user_doc"):
+                doc_row = await conn.fetchrow(
+                    """SELECT content FROM agent_documents
+                       WHERE agent_id = $1 AND doc_type = $2
+                       ORDER BY version DESC LIMIT 1""",
+                    row["id"], doc_type,
+                )
+                if doc_row:
+                    if doc_type == "soul":
+                        soul = doc_row["content"]
+                    elif doc_type == "identity":
+                        identity = doc_row["content"]
+                    else:
+                        user_doc = doc_row["content"]
+
+            # Build system prompt
+            parts = [p for p in (soul, identity, user_doc) if p.strip()]
+            if not parts:
+                parts = ["You are a helpful assistant."]
+
+            from bot.config import SKILLS_DIR
+            from bot.skills import load_skills, build_skills_prompt
+            skills = load_skills(SKILLS_DIR)
+            skills_prompt = build_skills_prompt(skills)
+            if skills_prompt:
+                parts.append(skills_prompt)
+
+            system_prompt = "\n\n---\n\n".join(parts)
+
+            workspace_dir = PROJECT_ROOT / f"workspace_{row['name']}"
+            workspace_dir.mkdir(parents=True, exist_ok=True)
+
+            agents.append(Agent(
+                name=row["name"],
+                discord_token=discord_token,
+                workspace_dir=workspace_dir,
+                system_prompt=system_prompt,
+                model=model,
+                provider=provider,
+            ))
+            log.info("loaded agent '%s' from DB", row["name"])
+
+    return agents if agents else None
+
+
 def _load_from_json() -> list[Agent] | None:
     """Try to load agents from agents.json. Returns None if file doesn't exist."""
     if not AGENTS_JSON.exists():
@@ -175,5 +260,29 @@ def load_agents(only: list[str] | None = None) -> list[Agent]:
 
     if not agents:
         raise SystemExit("No enabled agents found. Check agents.json or .env.")
+
+    return agents
+
+
+async def load_agents_async(only: list[str] | None = None) -> list[Agent]:
+    """Async version: load agents from DB first, then agents.json, then .env."""
+    agents = await _load_from_db()
+
+    if agents:
+        log.info("loaded %d agent(s) from database", len(agents))
+    else:
+        agents = _load_from_json()
+        if not agents:
+            log.info("agents.json not found or empty, falling back to .env")
+            agents = _load_from_env()
+
+    if only:
+        names = {n.lower() for n in only}
+        agents = [a for a in agents if a.name.lower() in names]
+        if not agents:
+            raise SystemExit(f"No matching agents for --only {', '.join(only)}")
+
+    if not agents:
+        raise SystemExit("No enabled agents found. Check DB, agents.json, or .env.")
 
     return agents
