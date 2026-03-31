@@ -17,6 +17,54 @@ from bot.tools import ALL_TOOLS, handle_tool_call
 
 log = get_logger("processor")
 
+# ── 24 Solar Terms (节气) ────────────────────────────────────────────────────
+# Approximate dates using the Shouxi formula. Each solar term falls around a
+# fixed date each year with ±1 day variance. We use a lookup of (month, day)
+# pairs computed from the average tropical year.
+
+_SOLAR_TERMS = [
+    "小寒", "大寒", "立春", "雨水", "惊蛰", "春分",
+    "清明", "谷雨", "立夏", "小满", "芒种", "夏至",
+    "小暑", "大暑", "立秋", "处暑", "白露", "秋分",
+    "寒露", "霜降", "立冬", "小雪", "大雪", "冬至",
+]
+
+# Century coefficients for 21st century (2000-2099)
+_TERM_C = [
+    5.4055, 20.12, 3.87, 18.73, 5.63, 20.646,
+    4.81, 20.1, 5.52, 21.04, 5.678, 21.37,
+    7.108, 22.83, 7.5, 23.13, 7.646, 23.042,
+    8.318, 23.438, 7.438, 22.36, 7.18, 21.94,
+]
+
+
+def _get_solar_term(year: int, month: int, day: int) -> str | None:
+    """Return the solar term name if today is a solar term day, else None."""
+    import math
+
+    # Each month has ~2 solar terms. Map month to term indices.
+    # Term 0 (小寒) is in month 1, term 1 (大寒) is in month 1, etc.
+    for i in range(24):
+        term_month = (i // 2) + 1  # 1-indexed month
+        if term_month != month:
+            continue
+
+        y = year % 100
+        c = _TERM_C[i]
+        # Shouxi formula: day = [Y*D + C] - [Y/4]  (D=0.2422)
+        term_day = int(y * 0.2422 + c) - int(y / 4)
+
+        # Known corrections for specific years
+        if i == 0 and year == 2019:  # 小寒 2019
+            term_day -= 1
+        elif i == 2 and year == 2026:  # 立春 2026
+            term_day += 1
+
+        if term_day == day:
+            return _SOLAR_TERMS[i]
+
+    return None
+
 
 class StreamProcessor:
     """Process LLM streaming responses: tool loop, content accumulation, auto-flush."""
@@ -53,7 +101,11 @@ class StreamProcessor:
             day_offset = (date(now.year, now.month, now.day) - date(2000, 1, 7)).days
             gz_day = 天干[day_offset % 10] + 地支[day_offset % 12]
 
-            lunar_str = f" | 农历{leap}{ld.month}月{ld.day}日 | {gz_year}年{gz_month}月{gz_day}日"
+            # 24节气
+            solar_term = _get_solar_term(now.year, now.month, now.day)
+            term_str = f" · {solar_term}" if solar_term else ""
+
+            lunar_str = f" | 农历{leap}{ld.month}月{ld.day}日 | {gz_year}年{gz_month}月{gz_day}日{term_str}"
         except ImportError:
             pass
 
