@@ -37,13 +37,23 @@ class StreamProcessor:
         tz_name = now.tzname() or "UTC"
         time_str = now.strftime(f"%Y-%m-%d %H:%M %A ({tz_name})")
 
-        # Chinese lunar calendar
+        # Chinese lunar calendar + 天干地支
         lunar_str = ""
         try:
             from lunardate import LunarDate
             ld = LunarDate.fromSolarDate(now.year, now.month, now.day)
             leap = "闰" if ld.isLeapMonth else ""
-            lunar_str = f" | 农历{leap}{ld.month}月{ld.day}日"
+
+            天干 = "甲乙丙丁戊己庚辛壬癸"
+            地支 = "子丑寅卯辰巳午未申酉戌亥"
+            gz_year = 天干[(ld.year - 4) % 10] + 地支[(ld.year - 4) % 12]
+            gz_month = 天干[(ld.year * 12 + ld.month + 3) % 10] + 地支[(ld.month + 1) % 12]
+            # 日干支：以已知基准点推算（2000-01-01 = 甲子日近似偏移）
+            from datetime import date
+            day_offset = (date(now.year, now.month, now.day) - date(2000, 1, 7)).days
+            gz_day = 天干[day_offset % 10] + 地支[day_offset % 12]
+
+            lunar_str = f" | 农历{leap}{ld.month}月{ld.day}日 | {gz_year}年{gz_month}月{gz_day}日"
         except ImportError:
             pass
 
