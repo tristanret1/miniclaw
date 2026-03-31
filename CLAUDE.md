@@ -653,22 +653,20 @@ SYSTEM_PROMPT = read("workspace/SOUL.md") + "\n\n---\n\n" + read("workspace/IDEN
 ## Development Commands
 
 ```bash
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-pip install -e ".[dev]"            # dev dependencies (pytest, coverage)
+uv sync --dev                      # install all deps (including dev)
 python setup.py                    # interactive OAuth + Discord token setup
-python main.py                     # run the bot
+uv run python main.py              # run the bot
 ```
 
 ## Testing
 
 ```bash
-pytest                             # run all tests
-pytest -v                          # verbose output
-pytest --cov=bot                   # with coverage report
-pytest --cov=bot --cov-report=term-missing  # show uncovered lines
-pytest tests/test_message.py       # single file
-pytest -k "test_tool"              # pattern match
+uv run pytest                             # run all tests
+uv run pytest -v                          # verbose output
+uv run pytest --cov=bot                   # with coverage report
+uv run pytest --cov=bot --cov-report=term-missing  # show uncovered lines
+uv run pytest tests/test_message.py       # single file
+uv run pytest -k "test_tool"              # pattern match
 ```
 
 - `pytest` + `pytest-asyncio` (auto mode: async tests run without decorators).
