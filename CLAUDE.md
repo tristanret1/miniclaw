@@ -39,6 +39,7 @@ miniclaw/
 │   ├── tts.py                       # Text-to-speech (OpenAI / Volcengine)
 │   ├── wake.py                      # Wake word detection
 │   ├── audio_engine.py              # Audio I/O engine (AVAudioEngine / PyAudio)
+│   ├── hooks.py                     # Agent lifecycle hook registry
 │   ├── google_oauth.py              # Google OAuth 2.0 flow
 │   │
 │   ├── provider/                    # LLM provider abstraction layer
@@ -63,6 +64,7 @@ miniclaw/
 │   │
 │   ├── gateway/                     # Non-Discord inbound/outbound gateways
 │   │   ├── __init__.py
+│   │   ├── api.py                   # HTTP/WS API gateway for external consumers
 │   │   ├── voice.py                 # Voice: mic → STT → wake → LLM → TTS → speaker
 │   │   ├── imessage.py              # iMessage gateway (imsg CLI via JSON-RPC)
 │   │   ├── sms.py                   # Twilio SMS inbound webhook (aiohttp)
@@ -615,6 +617,7 @@ Configuration is split between two files:
 | `gateway.voice` | `enabled`, wake words, STT/TTS provider + model, audio thresholds |
 | `gateway.sms` | `enabled`, `webhook_port`, `webhook_url` |
 | `gateway.imessage` | `enabled`, `cli_path`, `allow_from` |
+| `gateway.api` | `enabled`, `host`, `port`, `api_key` |
 | `gateway.heartbeat` | `enabled`, `interval`, `channel_id`, active hours |
 | `storage` | `backend` (`sqlite`/`postgres`), SQLite paths |
 | `services.google_calendar` | `enabled`, calendar IDs |
