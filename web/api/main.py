@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from bot.storage.db import ensure_schema
 from web.api.db import close_pool, get_pool
 from web.api.routes.agents import router as agents_router
+from web.api.routes.documents import router as documents_router
 
 
 @asynccontextmanager
@@ -33,3 +34,4 @@ app.add_middleware(
 )
 
 app.include_router(agents_router)
+app.include_router(documents_router)
