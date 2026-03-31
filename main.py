@@ -29,7 +29,7 @@ if not env_path.exists() or not creds_path.exists():
 
 import asyncio
 from bot.config import get_config
-from bot.agent import load_agents
+from bot.agent import load_agents_async
 from bot.client import create_bot
 from bot.storage.session import SessionManager
 
@@ -43,7 +43,7 @@ async def main():
     else:
         print("Using SQLite backend (local)")
 
-    agents = load_agents(only=_only_agents)
+    agents = await load_agents_async(only=_only_agents)
     print(f"Starting {len(agents)} agent(s): {', '.join(a.name for a in agents)}")
 
     # Initialize per-agent runtime state

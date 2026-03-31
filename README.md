@@ -56,6 +56,30 @@ uv run pytest -v                 # verbose
 uv run pytest --cov=bot          # with coverage
 ```
 
+## Agent Management UI
+
+Agent configuration (personality, identity, LLM settings) can be stored in PostgreSQL and managed via a web UI.
+
+### Setup
+
+```bash
+# Start the API server
+DATABASE_URL=your-postgres-url uv run uvicorn web.api.main:app --port 8000
+
+# Start the frontend (separate terminal)
+cd web/app && bun run dev
+```
+
+Open http://localhost:3000 to create and manage agents.
+
+### Migration from local files
+
+If you have existing agents in `agents.json` or `workspace/`:
+
+```bash
+uv run python scripts/migrate_agents_to_db.py
+```
+
 ## Project Structure
 
 ```
