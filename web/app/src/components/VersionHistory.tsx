@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, DocumentVersion } from '../lib/api';
+import { api } from '../lib/api';
+import type { DocumentVersion } from '../lib/api';
 
 interface Props {
   agentId: string;

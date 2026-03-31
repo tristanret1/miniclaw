@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, AgentSummary } from '../lib/api';
+import { api } from '../lib/api';
+import type { AgentSummary } from '../lib/api';
 import { AgentCard } from '../components/AgentCard';
 
 export function AgentList() {

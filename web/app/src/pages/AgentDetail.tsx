@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, AgentDetail as AgentDetailType } from '../lib/api';
+import { api } from '../lib/api';
+import type { AgentDetail as AgentDetailType } from '../lib/api';
 import { DocumentEditor } from '../components/DocumentEditor';
 import { VersionHistory } from '../components/VersionHistory';
 import { ConfigEditor } from '../components/ConfigEditor';

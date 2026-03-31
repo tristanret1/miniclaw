@@ -1,4 +1,4 @@
-import { AgentSummary } from '../lib/api';
+import type { AgentSummary } from '../lib/api';
 
 interface Props {
   agent: AgentSummary;
