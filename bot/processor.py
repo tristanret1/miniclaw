@@ -38,12 +38,16 @@ class StreamProcessor:
         time_str = now.strftime(f"%Y-%m-%d %H:%M %A ({tz_name})")
 
         # Chinese lunar calendar
-        from lunardate import LunarDate
-        ld = LunarDate.fromSolarDate(now.year, now.month, now.day)
-        leap = "闰" if ld.isLeapMonth else ""
-        lunar_str = f"农历{leap}{ld.month}月{ld.day}日"
+        lunar_str = ""
+        try:
+            from lunardate import LunarDate
+            ld = LunarDate.fromSolarDate(now.year, now.month, now.day)
+            leap = "闰" if ld.isLeapMonth else ""
+            lunar_str = f" | 农历{leap}{ld.month}月{ld.day}日"
+        except ImportError:
+            pass
 
-        return f"{base}\n\nCurrent time: {time_str} | {lunar_str}"
+        return f"{base}\n\nCurrent time: {time_str}{lunar_str}"
 
     async def process(self, user_content: Content) -> AsyncIterator[str]:
         """Full processing flow: append user message, tool loop, yield text chunks."""
