@@ -211,6 +211,38 @@ async def ensure_schema() -> None:
             ON messages (session_key, id)
         """)
 
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS agents (
+                id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name         TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                emoji        TEXT NOT NULL DEFAULT '',
+                config       JSONB NOT NULL DEFAULT '{}',
+                enabled      BOOLEAN NOT NULL DEFAULT true,
+                created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS agent_documents (
+                id         BIGSERIAL PRIMARY KEY,
+                agent_id   UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                doc_type   TEXT NOT NULL,
+                content    TEXT NOT NULL DEFAULT '',
+                version    INTEGER NOT NULL,
+                message    TEXT NOT NULL DEFAULT '',
+                created_by TEXT NOT NULL DEFAULT '',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                UNIQUE (agent_id, doc_type, version)
+            )
+        """)
+
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_agent_docs_latest
+            ON agent_documents (agent_id, doc_type, version DESC)
+        """)
+
     log.info("PostgreSQL schema verified")
 
 
