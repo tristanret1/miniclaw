@@ -178,6 +178,8 @@ class CodexProvider(BaseProvider):
         body = self._build_body(messages, system, tools)
         client = self._get_client()
 
+        log.info("API request → %s | model=%s | messages=%d", CODEX_API_ENDPOINT, self.model, len(messages))
+
         async with client.stream(
             "POST", CODEX_API_ENDPOINT, json=body, headers=self._headers(creds)
         ) as resp:
@@ -268,6 +270,19 @@ class CodexProvider(BaseProvider):
                     if current_text_block:
                         yield {"_event": "content_block_stop", "index": 0}
                         current_text_block = False
+                    # Log usage from completed response
+                    resp_obj = event.get("response", {})
+                    usage = resp_obj.get("usage", {})
+                    if usage:
+                        log.info(
+                            "API usage: input=%d output=%d total=%d",
+                            usage.get("input_tokens", 0),
+                            usage.get("output_tokens", 0),
+                            usage.get("total_tokens", 0),
+                        )
+                    resp_id = resp_obj.get("id", "")
+                    if resp_id:
+                        log.info("API response ← model=%s | id=%s", self.model, resp_id)
 
                 # Error
                 elif etype == "error":
