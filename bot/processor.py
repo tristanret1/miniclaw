@@ -32,11 +32,18 @@ class StreamProcessor:
 
     @staticmethod
     def _build_system_prompt(base: str) -> str:
-        """Append real-time context (current time + timezone) to system prompt."""
+        """Append real-time context (current time + timezone + lunar date) to system prompt."""
         now = datetime.now().astimezone()
         tz_name = now.tzname() or "UTC"
         time_str = now.strftime(f"%Y-%m-%d %H:%M %A ({tz_name})")
-        return f"{base}\n\nCurrent time: {time_str}"
+
+        # Chinese lunar calendar
+        from lunardate import LunarDate
+        ld = LunarDate.fromSolarDate(now.year, now.month, now.day)
+        leap = "闰" if ld.isLeapMonth else ""
+        lunar_str = f"农历{leap}{ld.month}月{ld.day}日"
+
+        return f"{base}\n\nCurrent time: {time_str} | {lunar_str}"
 
     async def process(self, user_content: Content) -> AsyncIterator[str]:
         """Full processing flow: append user message, tool loop, yield text chunks."""

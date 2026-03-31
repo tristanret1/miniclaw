@@ -18,6 +18,7 @@ dependencies = [
     "edge-tts>=6.1",
     "pyobjc-framework-AVFoundation>=10.0",
     "pyyaml>=6.0",
+    "lunardate>=0.2.2",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
 ]
