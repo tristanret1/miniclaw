@@ -198,7 +198,8 @@ async def start_feishu_gateway() -> None:
 
     # Discover bot open_id via raw API call
     try:
-        req = lark.RawRequest.builder() \
+        from lark_oapi.core.model.base_request import BaseRequest
+        req = BaseRequest.builder() \
             .http_method(lark.HttpMethod.GET) \
             .uri("/open-apis/bot/v3/info") \
             .build()
