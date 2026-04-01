@@ -202,6 +202,7 @@ async def start_feishu_gateway() -> None:
         req = BaseRequest.builder() \
             .http_method(lark.HttpMethod.GET) \
             .uri("/open-apis/bot/v3/info") \
+            .token_types({lark.AccessTokenType.TENANT}) \
             .build()
         resp = await _api_client.arequest(req)
         raw_body = resp.raw.content if resp.raw else b""
