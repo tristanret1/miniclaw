@@ -98,6 +98,11 @@ async def _reply_feishu_message(message_id: str, text: str) -> str:
 
 # ── Inbound: event handler ───────────────────────────────────────────────────
 
+# Simple in-memory dedup: track recently processed message IDs (max 500)
+_processed_msg_ids: set[str] = set()
+_MSG_ID_MAX = 500
+
+
 def _on_message_receive(data: object) -> None:
     """Handle im.message.receive_v1 event (called from WS thread)."""
     log.info("feishu event received: message_type=%s chat_type=%s",
@@ -123,6 +128,18 @@ async def _process_feishu_message(data: object) -> None:
     event = data.event
     msg = event.message
     sender = event.sender
+
+    # Dedup: skip if already processed (Feishu may re-push on timeout)
+    msg_id = msg.message_id
+    if msg_id in _processed_msg_ids:
+        log.debug("feishu: skipping duplicate message_id=%s", msg_id)
+        return
+    _processed_msg_ids.add(msg_id)
+    if len(_processed_msg_ids) > _MSG_ID_MAX:
+        # Evict oldest entries (set is unordered, but sufficient for dedup)
+        to_remove = len(_processed_msg_ids) - _MSG_ID_MAX
+        for _ in range(to_remove):
+            _processed_msg_ids.pop()
 
     # Only handle text messages for now
     if msg.message_type != "text":
