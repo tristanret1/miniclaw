@@ -368,7 +368,7 @@ main() {
 
     # Step 3: Install Python deps
     log "Installing Python packages..."
-    run_remote "sudo -u ubuntu bash -c 'cd \"${APP_DIR}\" && python3 -m venv venv && source venv/bin/activate && pip install -q -r requirements.txt'"
+    run_remote "sudo -u ubuntu bash -c 'cd \"${APP_DIR}\" && python3 -m venv venv && source venv/bin/activate && pip install -q -e .'"
 
     # Step 4: Write secrets to instance via SSM command
     log "Writing secrets to instance..."
@@ -424,6 +424,7 @@ Wants=network-online.target
 Type=simple
 User=ubuntu
 WorkingDirectory=${APP_DIR}
+Environment=MINICLAW_GATEWAY=feishu,sms
 ExecStart=/bin/bash ${APP_DIR}/start.sh
 Restart=always
 RestartSec=5

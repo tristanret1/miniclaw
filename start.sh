@@ -61,11 +61,18 @@ else
 fi
 
 # ── Start bot ────────────────────────────────────────────────────────────────
+# Pass MINICLAW_GATEWAY env var as --gateway flag if set
+GATEWAY_FLAG=""
+if [ -n "${MINICLAW_GATEWAY:-}" ]; then
+    GATEWAY_FLAG="--gateway $MINICLAW_GATEWAY"
+    echo "Starting with gateways: $MINICLAW_GATEWAY"
+fi
+
 # Use venv python if available (production), otherwise bare python
 if [ -x "venv/bin/python" ]; then
-    venv/bin/python main.py &
+    venv/bin/python main.py $GATEWAY_FLAG &
 else
-    python main.py &
+    python main.py $GATEWAY_FLAG &
 fi
 BOT_PID=$!
 
