@@ -1,7 +1,5 @@
 """Agent abstraction — bundles per-bot identity, workspace, and runtime state."""
 
-import json
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -148,110 +146,22 @@ async def _load_from_db() -> list[Agent] | None:
     return agents if agents else None
 
 
-def _load_from_json() -> list[Agent] | None:
-    """Try to load agents from agents.json. Returns None if file doesn't exist."""
-    if not AGENTS_JSON.exists():
-        return None
+async def load_agents_async(only: list[str] | None = None) -> list[Agent]:
+    """Load agents from DB. Falls back to single default agent from .env."""
+    agents = await _load_from_db()
 
-    log.info("loading agents from %s", AGENTS_JSON)
-    with open(AGENTS_JSON) as f:
-        data = json.load(f)
-
-    entries = data.get("agents", [])
-    if not entries:
-        return None
-
-    agents = []
-    for entry in entries:
-        name = entry.get("name", "").strip()
-        token = entry.get("discord_token", "").strip()
-        workspace = entry.get("workspace", f"workspace_{name}")
-
-        if not name:
-            log.warning("skipping agent entry with missing name: %s", entry)
-            continue
-
-        if not entry.get("enabled", True):
-            log.info("agent '%s' is disabled, skipping", name)
-            continue
-
-        workspace_path = Path(workspace)
-        if not workspace_path.is_absolute():
-            workspace_path = PROJECT_ROOT / workspace_path
-
-        workspace_path.mkdir(parents=True, exist_ok=True)
-
-        agents.append(Agent(
-            name=name,
-            discord_token=token,
-            workspace_dir=workspace_path,
-            model=entry.get("model", ""),
-            provider=entry.get("provider", ""),
-        ))
-        log.info("loaded agent '%s' (workspace=%s)", name, workspace_path)
-
-    return agents if agents else None
-
-
-def _load_from_env() -> list[Agent]:
-    """Load agents from env vars (legacy). Falls back to single-agent mode."""
-    from bot.config import get_secrets, WORKSPACE_DIR, get_system_prompt
-
-    agents_str = os.getenv("AGENTS", "").strip()
-    if not agents_str:
-        # Single-agent backward compatibility
-        return [Agent(
+    if agents:
+        log.info("loaded %d agent(s) from database", len(agents))
+    else:
+        from bot.config import get_secrets, WORKSPACE_DIR, get_system_prompt
+        log.info("no agents in DB, using default agent from .env")
+        agents = [Agent(
             name="default",
             discord_token=get_secrets()["DISCORD_BOT_TOKEN"],
             workspace_dir=WORKSPACE_DIR,
             system_prompt=get_system_prompt(),
         )]
 
-    agents = []
-    for name in agents_str.split(","):
-        name = name.strip()
-        if not name:
-            continue
-
-        key = name.upper()
-        token = os.getenv(f"AGENT_{key}_DISCORD_TOKEN", "")
-        workspace = os.getenv(f"AGENT_{key}_WORKSPACE", f"workspace_{name}")
-
-        if not token:
-            log.warning("agent '%s' has no AGENT_%s_DISCORD_TOKEN, skipping", name, key)
-            continue
-
-        workspace_path = Path(workspace)
-        if not workspace_path.is_absolute():
-            workspace_path = PROJECT_ROOT / workspace_path
-
-        workspace_path.mkdir(parents=True, exist_ok=True)
-
-        agents.append(Agent(
-            name=name,
-            discord_token=token,
-            workspace_dir=workspace_path,
-        ))
-        log.info("loaded agent '%s' (workspace=%s)", name, workspace_path)
-
-    if not agents:
-        raise SystemExit("AGENTS is set but no valid agents found. Check AGENT_*_DISCORD_TOKEN vars.")
-
-    return agents
-
-
-def load_agents(only: list[str] | None = None) -> list[Agent]:
-    """Load agents from agents.json first, falling back to .env.
-
-    Args:
-        only: If provided, only load agents whose names are in this list.
-    """
-    # Prefer agents.json
-    agents = _load_from_json()
-    if not agents:
-        log.info("agents.json not found or empty, falling back to .env")
-        agents = _load_from_env()
-
     if only:
         names = {n.lower() for n in only}
         agents = [a for a in agents if a.name.lower() in names]
@@ -259,30 +169,6 @@ def load_agents(only: list[str] | None = None) -> list[Agent]:
             raise SystemExit(f"No matching agents for --only {', '.join(only)}")
 
     if not agents:
-        raise SystemExit("No enabled agents found. Check agents.json or .env.")
-
-    return agents
-
-
-async def load_agents_async(only: list[str] | None = None) -> list[Agent]:
-    """Async version: load agents from DB first, then agents.json, then .env."""
-    agents = await _load_from_db()
-
-    if agents:
-        log.info("loaded %d agent(s) from database", len(agents))
-    else:
-        agents = _load_from_json()
-        if not agents:
-            log.info("agents.json not found or empty, falling back to .env")
-            agents = _load_from_env()
-
-    if only:
-        names = {n.lower() for n in only}
-        agents = [a for a in agents if a.name.lower() in names]
-        if not agents:
-            raise SystemExit(f"No matching agents for --only {', '.join(only)}")
-
-    if not agents:
-        raise SystemExit("No enabled agents found. Check DB, agents.json, or .env.")
+        raise SystemExit("No enabled agents found. Check DB or .env.")
 
     return agents
