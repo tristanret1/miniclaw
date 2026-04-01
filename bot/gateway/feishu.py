@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import lark_oapi as lark
 
-from bot.config import get_config, get_secrets
+from bot.config import get_config, get_secrets, PROJECT_ROOT
 from bot.logger import get_logger
 from bot.message import build_user_content
 from bot.utils.session_keys import feishu_key
@@ -18,6 +18,7 @@ log = get_logger("feishu")
 _api_client: "lark.Client | None" = None
 _main_loop: asyncio.AbstractEventLoop | None = None
 _bot_open_id: str | None = None
+_feishu_agent = None  # Agent instance for feishu
 
 
 # ── Message parsing helpers ──────────────────────────────────────────────────
@@ -159,12 +160,12 @@ async def _process_feishu_message(data: object) -> None:
     log.info("feishu ← chat=%s sender=%s type=%s len=%d",
              chat_id, sender_id, chat_type, len(text))
 
-    # Call LLM
+    # Call LLM (using feishu-specific agent)
     session_key = feishu_key(chat_id, sender_id)
     user_content = build_user_content(text, [])
 
     from bot import llm
-    reply_text = await llm.reply(session_key, user_content)
+    reply_text = await llm.reply(session_key, user_content, agent=_feishu_agent)
 
     if reply_text.strip():
         result = await _reply_feishu_message(message_id, reply_text)
@@ -176,7 +177,7 @@ async def _process_feishu_message(data: object) -> None:
 
 async def start_feishu_gateway() -> None:
     """Start the Feishu WebSocket gateway. Runs until cancelled."""
-    global _api_client, _main_loop, _bot_open_id
+    global _api_client, _main_loop, _bot_open_id, _feishu_agent
 
     secrets = get_secrets()
     app_id = secrets["FEISHU_APP_ID"]
@@ -185,6 +186,19 @@ async def start_feishu_gateway() -> None:
     if not app_id or not app_secret:
         log.error("FEISHU_APP_ID / FEISHU_APP_SECRET not set, cannot start")
         return
+
+    # Set up feishu-specific agent with its own workspace/personality
+    from bot.agent import Agent
+    from bot.storage.session import SessionManager
+    feishu_workspace = PROJECT_ROOT / "workspace_feishu"
+    feishu_workspace.mkdir(parents=True, exist_ok=True)
+    _feishu_agent = Agent(
+        name="feishu",
+        discord_token="",  # not used
+        workspace_dir=feishu_workspace,
+    )
+    _feishu_agent.session_mgr = SessionManager(db_path=_feishu_agent.sessions_db)
+    log.info("feishu agent initialized (workspace=%s)", feishu_workspace)
 
     import lark_oapi as lark
 

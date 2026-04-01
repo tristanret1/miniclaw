@@ -11,4 +11,9 @@ venv/
 logs/
 workspace/
 workspace_*/
+# Track personality files in workspaces
+!workspace*/SOUL.md
+!workspace*/IDENTITY.md
+!workspace*/USER.md
+!workspace*/MEMORY.md
 scripts/deploy.config
