@@ -99,6 +99,9 @@ async def _reply_feishu_message(message_id: str, text: str) -> str:
 
 def _on_message_receive(data: object) -> None:
     """Handle im.message.receive_v1 event (called from WS thread)."""
+    log.info("feishu event received: message_type=%s chat_type=%s",
+             getattr(getattr(data, "event", None), "message", None) and data.event.message.message_type,
+             getattr(getattr(data, "event", None), "message", None) and data.event.message.chat_type)
     if _main_loop is None:
         log.error("main loop not set, dropping message")
         return
