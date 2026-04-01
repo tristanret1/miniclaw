@@ -68,6 +68,7 @@ miniclaw/
 │   │   ├── voice.py                 # Voice: mic → STT → wake → LLM → TTS → speaker
 │   │   ├── imessage.py              # iMessage gateway (imsg CLI via JSON-RPC)
 │   │   ├── sms.py                   # Twilio SMS inbound webhook (aiohttp)
+│   │   ├── feishu.py                # Feishu: lark-oapi WebSocket long connection
 │   │   └── heartbeat.py             # Periodic agent polling (default-silent)
 │   │
 │   ├── storage/                     # Persistence layer
@@ -618,6 +619,7 @@ Configuration is split between two files:
 | `gateway.sms` | `enabled`, `webhook_port`, `webhook_url` |
 | `gateway.imessage` | `enabled`, `cli_path`, `allow_from` |
 | `gateway.api` | `enabled`, `host`, `port`, `api_key` |
+| `gateway.feishu` | `enabled`, `allow_from` |
 | `gateway.heartbeat` | `enabled`, `interval`, `channel_id`, active hours |
 | `storage` | `backend` (`sqlite`/`postgres`), SQLite paths |
 | `services.google_calendar` | `enabled`, calendar IDs |
@@ -639,6 +641,8 @@ Configuration is split between two files:
 | `TWILIO_FROM_NUMBER` | no | Twilio outbound phone number |
 | `VOLCENGINE_APP_ID` | no | Volcengine TTS app ID |
 | `VOLCENGINE_TOKEN` | no | Volcengine TTS token |
+| `FEISHU_APP_ID` | no | Feishu app ID (飞书自建应用) |
+| `FEISHU_APP_SECRET` | no | Feishu app secret |
 | `GOOGLE_CREDENTIALS_FILE` | no | Path to Google service account credentials |
 
 ### System Prompt Assembly

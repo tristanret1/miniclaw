@@ -65,6 +65,9 @@ gateway:
     host: "127.0.0.1"
     port: 8766
     api_key: ""
+  feishu:
+    enabled: false
+    allow_from: []
 
 storage:
   backend: sqlite

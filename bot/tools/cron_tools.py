@@ -50,8 +50,8 @@ CRON_CREATE_TOOL = {
             },
             "delivery_channel": {
                 "type": "string",
-                "enum": ["discord", "sms", "imessage"],
-                "description": "Delivery channel: 'discord' (default) sends to Discord channel_id, 'sms' sends SMS via Twilio, 'imessage' sends via iMessage. For sms/imessage, channel_id should be E.164 phone number or Apple ID.",
+                "enum": ["discord", "sms", "imessage", "feishu"],
+                "description": "Delivery channel: 'discord' (default) sends to Discord channel_id, 'sms' sends SMS via Twilio, 'imessage' sends via iMessage, 'feishu' sends to Feishu chat. For sms/imessage, channel_id should be E.164 phone number or Apple ID. For feishu, use chat_id (oc_xxx).",
             },
         },
         "required": ["name", "schedule_type", "schedule_value", "payload", "channel_id"],

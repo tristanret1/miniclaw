@@ -90,6 +90,10 @@ async def main():
             from bot.gateway.voice import start_voice_gateway
             tasks.append(start_voice_gateway(agent=voice_agent))
 
+        if _gw_cfg.feishu.enabled:
+            from bot.gateway.feishu import start_feishu_gateway
+            tasks.append(start_feishu_gateway())
+
     try:
         await asyncio.gather(*tasks)
     finally:

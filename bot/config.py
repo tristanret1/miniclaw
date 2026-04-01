@@ -73,6 +73,8 @@ def get_secrets() -> dict:
         "GOOGLE_CALENDAR_CLIENT_SECRET": os.getenv("GOOGLE_CALENDAR_CLIENT_SECRET", ""),
         "GOOGLE_CALENDAR_LIFE_ID": os.getenv("GOOGLE_CALENDAR_LIFE_ID", ""),
         "GOOGLE_CALENDAR_WORK_ID": os.getenv("GOOGLE_CALENDAR_WORK_ID", ""),
+        "FEISHU_APP_ID": os.getenv("FEISHU_APP_ID", ""),
+        "FEISHU_APP_SECRET": os.getenv("FEISHU_APP_SECRET", ""),
     }
 
 

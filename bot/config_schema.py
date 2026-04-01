@@ -268,6 +268,19 @@ class ApiConfig:
 
 
 @dataclass
+class FeishuConfig:
+    enabled: bool = False
+    allow_from: list = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> FeishuConfig:
+        return cls(
+            enabled=_bool(d.get("enabled"), False),
+            allow_from=_list(d.get("allow_from"), []),
+        )
+
+
+@dataclass
 class GatewayConfig:
     voice: VoiceConfig = field(default_factory=VoiceConfig)
     volcengine: VolcengineConfig = field(default_factory=VolcengineConfig)
@@ -275,6 +288,7 @@ class GatewayConfig:
     imessage: IMessageConfig = field(default_factory=IMessageConfig)
     heartbeat: HeartbeatConfig = field(default_factory=HeartbeatConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
+    feishu: FeishuConfig = field(default_factory=FeishuConfig)
 
     @classmethod
     def from_dict(cls, d: dict) -> GatewayConfig:
@@ -285,6 +299,7 @@ class GatewayConfig:
             imessage=IMessageConfig.from_dict(d.get("imessage") or {}),
             heartbeat=HeartbeatConfig.from_dict(d.get("heartbeat") or {}),
             api=ApiConfig.from_dict(d.get("api") or {}),
+            feishu=FeishuConfig.from_dict(d.get("feishu") or {}),
         )
 
 

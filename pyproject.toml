@@ -21,6 +21,7 @@ dependencies = [
     "lunardate>=0.2.2",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
+    "lark-oapi>=1.5.3",
 ]
 
 [project.optional-dependencies]
