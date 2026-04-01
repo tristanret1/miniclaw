@@ -7,16 +7,19 @@ if len(sys.argv) > 1 and sys.argv[1] == "agents":
     cli_main(sys.argv[2:])
     sys.exit(0)
 
-# Parse --only flag for selective agent startup
+# Parse CLI flags
 _only_agents: list[str] | None = None
+_only_gateways: set[str] | None = None  # e.g. {"feishu", "sms"}
 _voice_only = "--voice-only" in sys.argv
 for i, arg in enumerate(sys.argv[1:], 1):
     if arg == "--only" and i + 1 < len(sys.argv):
         _only_agents = [n.strip() for n in sys.argv[i + 1].split(",") if n.strip()]
-        break
-    if arg.startswith("--only="):
+    elif arg.startswith("--only="):
         _only_agents = [n.strip() for n in arg.split("=", 1)[1].split(",") if n.strip()]
-        break
+    elif arg == "--gateway" and i + 1 < len(sys.argv):
+        _only_gateways = {n.strip() for n in sys.argv[i + 1].split(",") if n.strip()}
+    elif arg.startswith("--gateway="):
+        _only_gateways = {n.strip() for n in arg.split("=", 1)[1].split(",") if n.strip()}
 
 env_path = Path(__file__).parent / ".env"
 creds_path = Path(__file__).parent / ".credentials.json"
@@ -55,11 +58,48 @@ async def main():
     # Find the voice agent (if any)
     voice_agent = next((a for a in agents if a.name == "voice"), None)
 
+    def _gw_enabled(name: str) -> bool:
+        """Check if a gateway should start (respects --gateway filter)."""
+        if _only_gateways is not None:
+            return name in _only_gateways
+        return True
+
     if _voice_only:
         # Voice-only mode — skip Discord bots and other gateways
         from bot.gateway.voice import start_voice_gateway
         tasks.append(start_voice_gateway(agent=voice_agent))
         print(f"Voice-only mode (agent={voice_agent.name if voice_agent else 'default'})")
+    elif _only_gateways is not None:
+        # Gateway-only mode — skip Discord bots, start only specified gateways
+        _gw_cfg = get_config().gateway
+        gw_names = []
+
+        if _gw_enabled("feishu") and _gw_cfg.feishu.enabled:
+            from bot.gateway.feishu import start_feishu_gateway
+            tasks.append(start_feishu_gateway())
+            gw_names.append("feishu")
+
+        if _gw_enabled("sms") and _gw_cfg.sms.enabled:
+            from bot.gateway.sms import start_sms_server
+            tasks.append(start_sms_server())
+            gw_names.append("sms")
+
+        if _gw_enabled("imessage") and _gw_cfg.imessage.enabled:
+            from bot.gateway.imessage import start_imessage_gateway
+            tasks.append(start_imessage_gateway())
+            gw_names.append("imessage")
+
+        if _gw_enabled("voice") and _gw_cfg.voice.enabled:
+            from bot.gateway.voice import start_voice_gateway
+            tasks.append(start_voice_gateway(agent=voice_agent))
+            gw_names.append("voice")
+
+        if _gw_enabled("api") and _gw_cfg.api.enabled:
+            from bot.gateway.api import start_api_server
+            tasks.append(start_api_server())
+            gw_names.append("api")
+
+        print(f"Gateway-only mode: {', '.join(gw_names) or 'none matched'}")
     else:
         for agent in agents:
             # Skip voice-only agents (no Discord token)
