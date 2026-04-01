@@ -135,7 +135,7 @@ async def _process_feishu_message(data: object) -> None:
         mentions = msg.mentions or []
         bot_mentioned = any(
             m.id and m.id.open_id == _bot_open_id for m in mentions
-        )
+        ) if _bot_open_id else bool(mentions)
         if not bot_mentioned:
             return
 
@@ -196,16 +196,21 @@ async def start_feishu_gateway() -> None:
         .build()
     )
 
-    # Discover bot open_id
+    # Discover bot open_id via raw API call
     try:
-        from lark_oapi.api.bot.v3 import GetBotInfoRequest
-        req = GetBotInfoRequest.builder().build()
-        resp = await _api_client.bot.v3.bot_info.aget(req)
-        if resp.success() and resp.data and resp.data.bot:
-            _bot_open_id = resp.data.bot.open_id
-            log.info("feishu bot open_id: %s", _bot_open_id)
+        req = lark.RawRequest.builder() \
+            .http_method(lark.HttpMethod.GET) \
+            .uri("/open-apis/bot/v3/info") \
+            .build()
+        resp = await _api_client.arequest(req)
+        if resp.success():
+            bot_info = json.loads(resp.raw.content).get("bot", {})
+            _bot_open_id = bot_info.get("open_id")
+            log.info("feishu bot: %s (open_id=%s)", bot_info.get("app_name"), _bot_open_id)
+        else:
+            log.warning("failed to get bot info: code=%s msg=%s", resp.code, resp.msg)
     except Exception as e:
-        log.warning("failed to get bot info: %s (mentions won't be stripped)", e)
+        log.warning("failed to get bot info: %s", e)
 
     # Event handler
     event_handler = (
@@ -214,15 +219,23 @@ async def start_feishu_gateway() -> None:
         .build()
     )
 
-    # WebSocket client (runs in its own thread — start() blocks)
-    ws_client = lark.ws.Client(
-        app_id,
-        app_secret,
-        event_handler=event_handler,
-        log_level=lark.LogLevel.WARNING,
-    )
+    # WebSocket client (runs in its own thread — start() blocks).
+    # lark_oapi's ws.Client uses a module-level event loop; we must give the
+    # worker thread a fresh loop so it doesn't collide with the main asyncio.run().
+    def _run_ws() -> None:
+        import lark_oapi.ws.client as _ws_mod
+        _ws_mod.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(_ws_mod.loop)
 
-    thread = threading.Thread(target=ws_client.start, daemon=True, name="feishu-ws")
+        ws_client = lark.ws.Client(
+            app_id,
+            app_secret,
+            event_handler=event_handler,
+            log_level=lark.LogLevel.WARNING,
+        )
+        ws_client.start()
+
+    thread = threading.Thread(target=_run_ws, daemon=True, name="feishu-ws")
     thread.start()
     log.info("Feishu WebSocket gateway started")
 
