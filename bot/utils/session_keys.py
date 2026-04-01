@@ -36,3 +36,6 @@ def pixeltown_key(agent_id: str) -> str:
 
 def feishu_key(chat_id: str, sender_id: str) -> str:
     return f"feishu:{chat_id}:{sender_id}"
+
+def whatsapp_key(phone: str) -> str:
+    return f"whatsapp:{phone}"

@@ -94,6 +94,11 @@ async def main():
             tasks.append(start_voice_gateway(agent=voice_agent))
             gw_names.append("voice")
 
+        if _gw_enabled("whatsapp") and _gw_cfg.whatsapp.enabled:
+            from bot.gateway.whatsapp import start_whatsapp_gateway
+            tasks.append(start_whatsapp_gateway())
+            gw_names.append("whatsapp")
+
         if _gw_enabled("api") and _gw_cfg.api.enabled:
             from bot.gateway.api import start_api_server
             tasks.append(start_api_server())
@@ -133,6 +138,10 @@ async def main():
         if _gw_cfg.feishu.enabled:
             from bot.gateway.feishu import start_feishu_gateway
             tasks.append(start_feishu_gateway())
+
+        if _gw_cfg.whatsapp.enabled:
+            from bot.gateway.whatsapp import start_whatsapp_gateway
+            tasks.append(start_whatsapp_gateway())
 
     try:
         await asyncio.gather(*tasks)

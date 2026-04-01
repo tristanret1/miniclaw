@@ -68,6 +68,10 @@ gateway:
   feishu:
     enabled: true
     allow_from: []
+  whatsapp:
+    enabled: false
+    allow_from: []
+    session_db: "workspace/whatsapp_session.db"
 
 storage:
   backend: sqlite

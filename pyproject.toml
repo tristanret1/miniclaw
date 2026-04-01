@@ -1,7 +1,7 @@
 [project]
 name = "miniclaw"
 version = "0.3.2"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
     "discord.py>=2.3",
     "httpx[http2]",
@@ -13,18 +13,22 @@ dependencies = [
     "google-auth>=2.0",
     "asyncpg>=0.30.0",
     "pgvector>=0.3.0",
-    "pyaudio>=0.2.14",
     "openai>=1.0",
     "edge-tts>=6.1",
-    "pyobjc-framework-AVFoundation>=10.0",
     "pyyaml>=6.0",
     "lunardate>=0.2.2",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
     "lark-oapi>=1.5.3",
+    "croniter>=1.0",
+    "neonize>=0.3",
 ]
 
 [project.optional-dependencies]
+audio = [
+    "pyaudio>=0.2.14",
+    "pyobjc-framework-AVFoundation>=10.0; sys_platform == 'darwin'",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
