@@ -31,16 +31,15 @@ miniclaw/
 │   ├── acp.py                       # Claude Code integration (claude-agent-sdk)
 │   ├── commands.py                  # Discord slash commands (/autoreply)
 │   ├── logger.py                    # Logging config (stdout + rotating file)
-│   ├── agent.py                     # Agent loop helpers
+│   ├── agent.py                     # Agent loader (DB → .env fallback)
 │   ├── skills.py                    # Bot skill registry
-│   ├── cron.py                      # Cron job scheduler
-│   ├── health.py                    # Health tracking
-│   ├── stt.py                       # Speech-to-text (OpenAI Whisper)
-│   ├── tts.py                       # Text-to-speech (OpenAI / Volcengine)
-│   ├── wake.py                      # Wake word detection
-│   ├── audio_engine.py              # Audio I/O engine (AVAudioEngine / PyAudio)
 │   ├── hooks.py                     # Agent lifecycle hook registry
-│   ├── google_oauth.py              # Google OAuth 2.0 flow
+│   │
+│   ├── audio/                       # Audio processing utilities
+│   │   ├── stt.py                   # Speech-to-text (OpenAI Whisper)
+│   │   ├── tts.py                   # Text-to-speech (OpenAI / Volcengine)
+│   │   ├── wake.py                  # Wake word detection
+│   │   └── engine.py                # Audio I/O engine (AVAudioEngine / PyAudio)
 │   │
 │   ├── provider/                    # LLM provider abstraction layer
 │   │   ├── __init__.py              # Provider registry + get_provider() factory
@@ -69,7 +68,8 @@ miniclaw/
 │   │   ├── imessage.py              # iMessage gateway (imsg CLI via JSON-RPC)
 │   │   ├── sms.py                   # Twilio SMS inbound webhook (aiohttp)
 │   │   ├── feishu.py                # Feishu: lark-oapi WebSocket long connection
-│   │   └── heartbeat.py             # Periodic agent polling (default-silent)
+│   │   ├── heartbeat.py             # Periodic agent polling (default-silent)
+│   │   └── status.py                # Agent online/offline status tracker
 │   │
 │   ├── storage/                     # Persistence layer
 │   │   ├── __init__.py
@@ -80,10 +80,13 @@ miniclaw/
 │   ├── oauth/                       # OAuth credential management
 │   │   ├── __init__.py
 │   │   ├── anthropic.py             # Anthropic PKCE flow, credential save/load/refresh
-│   │   └── codex.py                 # Codex device auth flow, token refresh
+│   │   ├── codex.py                 # Codex device auth flow, token refresh
+│   │   └── google.py                # Google OAuth 2.0 flow
 │   │
-│   ├── services/                    # External service clients
+│   ├── services/                    # External service clients + schedulers
 │   │   ├── __init__.py
+│   │   ├── cron.py                  # Cron job scheduler (PostgreSQL-backed)
+│   │   ├── health.py                # Health tracking (weight, sleep, exercise)
 │   │   ├── google_calendar.py       # Google Calendar API wrapper
 │   │   └── twilio.py                # Twilio SMS/voice client
 │   │
@@ -117,17 +120,18 @@ miniclaw/
     │   └── test_cron.py             # cron.py tests
     ├── gateway/
     │   ├── test_voice.py            # voice.py tests
+    │   ├── test_feishu.py           # feishu.py tests
     │   ├── test_imessage.py         # imessage.py tests
     │   ├── test_sms.py              # sms.py tests
     │   ├── test_heartbeat.py        # heartbeat.py tests
-    │   ├── test_stt.py              # stt.py tests
-    │   ├── test_tts.py              # tts.py tests
-    │   └── test_wake.py             # wake.py tests
+    │   ├── test_stt.py              # audio/stt.py tests
+    │   ├── test_tts.py              # audio/tts.py tests
+    │   └── test_wake.py             # audio/wake.py tests
     ├── oauth/
     │   └── test_oauth.py            # oauth/ tests
     ├── services/
     │   ├── test_google_calendar.py  # google_calendar.py tests
-    │   ├── test_health.py           # health.py tests
+    │   ├── test_health.py           # services/health.py tests
     │   └── test_skills.py           # skills.py tests
     └── tools/
         └── test_tools.py            # tools/ tests
