@@ -33,3 +33,6 @@ def sms_key(from_number: str) -> str:
 
 def pixeltown_key(agent_id: str) -> str:
     return f"pixeltown:{agent_id}"
+
+def feishu_key(chat_id: str, sender_id: str) -> str:
+    return f"feishu:{chat_id}:{sender_id}"
