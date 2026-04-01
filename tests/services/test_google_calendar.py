@@ -255,7 +255,7 @@ class TestDeleteEvent:
         mock_service.events.return_value.delete.return_value.execute.return_value = None
 
         with patch("bot.services.google_calendar._find_reminder_job", return_value="job-123"):
-            with patch("bot.cron.delete_job", new_callable=AsyncMock) as mock_delete_job:
+            with patch("bot.services.cron.delete_job", new_callable=AsyncMock) as mock_delete_job:
                 result = await delete_event(event_id="evt1")
                 mock_delete_job.assert_called_once_with("job-123")
                 assert "deleted" in result.lower()
@@ -264,7 +264,7 @@ class TestDeleteEvent:
 # ── _schedule_urgent_reminder (mocked) ────────────────────────────────────
 
 class TestScheduleUrgentReminder:
-    @patch("bot.cron.create_job", new_callable=AsyncMock, return_value="Created job 'Reminder: Dentist' (id=abc123)")
+    @patch("bot.services.cron.create_job", new_callable=AsyncMock, return_value="Created job 'Reminder: Dentist' (id=abc123)")
     async def test_default_reminder(self, mock_create_job):
         result = await _schedule_urgent_reminder(
             event_id="evt1",
@@ -278,7 +278,7 @@ class TestScheduleUrgentReminder:
         assert call_kwargs["name"] == "Reminder: Dentist"
         assert "calendar_event_id:evt1" in call_kwargs["context"]
 
-    @patch("bot.cron.create_job", new_callable=AsyncMock, return_value="Created job 'Reminder: Flight' (id=def456)")
+    @patch("bot.services.cron.create_job", new_callable=AsyncMock, return_value="Created job 'Reminder: Flight' (id=def456)")
     async def test_custom_offset(self, mock_create_job):
         result = await _schedule_urgent_reminder(
             event_id="evt2",

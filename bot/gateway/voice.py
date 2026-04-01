@@ -13,7 +13,8 @@ import struct
 import time
 from typing import TYPE_CHECKING
 
-from bot import llm, stt, tts, wake
+from bot import llm
+from bot.audio import stt, tts, wake
 from bot.config import get_config
 from bot.logger import get_logger
 from bot.message import build_user_content
@@ -275,7 +276,7 @@ class VoiceGateway:
         stream = None
         pa = None
         try:
-            from bot.audio_engine import AudioEngine
+            from bot.audio.engine import AudioEngine
             engine = AudioEngine(sample_rate=self._sample_rate)
             engine.start(queue=audio_queue, loop=loop)
             self._engine = engine

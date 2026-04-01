@@ -1,4 +1,4 @@
-"""Tests for bot.tts — TTS provider abstraction."""
+"""Tests for bot.audio.tts — TTS provider abstraction."""
 
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
@@ -10,7 +10,7 @@ class TestOpenAITTS:
     @pytest.mark.asyncio
     async def test_synthesize_returns_audio_bytes(self):
         """synthesize() calls OpenAI API and returns audio bytes."""
-        from bot.tts import synthesize_openai
+        from bot.audio.tts import synthesize_openai
 
         fake_response = MagicMock()
         fake_response.content = b"fake-audio-data"
@@ -25,7 +25,7 @@ class TestOpenAITTS:
     @pytest.mark.asyncio
     async def test_synthesize_openai_uses_config(self):
         """synthesize_openai() passes model and voice from args."""
-        from bot.tts import synthesize_openai
+        from bot.audio.tts import synthesize_openai
 
         fake_response = MagicMock()
         fake_response.content = b"audio"
@@ -65,7 +65,7 @@ class TestEdgeTTS:
         mock_edge_tts.Communicate.return_value = mock_communicate
 
         with patch.dict("sys.modules", {"edge_tts": mock_edge_tts}):
-            from bot.tts import synthesize_edge
+            from bot.audio.tts import synthesize_edge
             result = await synthesize_edge("Hello")
             assert result == b"chunk1chunk2"
 
@@ -76,8 +76,8 @@ class TestSynthesizeDispatch:
     @pytest.mark.asyncio
     async def test_synthesize_dispatches_to_openai(self):
         """synthesize() calls OpenAI when provider is 'openai'."""
-        with patch("bot.tts.synthesize_openai", new_callable=AsyncMock, return_value=b"audio") as mock_openai:
-            from bot.tts import synthesize
+        with patch("bot.audio.tts.synthesize_openai", new_callable=AsyncMock, return_value=b"audio") as mock_openai:
+            from bot.audio.tts import synthesize
             result = await synthesize("Hello", provider="openai")
             assert result == b"audio"
             mock_openai.assert_called_once()
@@ -85,8 +85,8 @@ class TestSynthesizeDispatch:
     @pytest.mark.asyncio
     async def test_synthesize_dispatches_to_edge(self):
         """synthesize() calls edge-tts when provider is 'edge'."""
-        with patch("bot.tts.synthesize_edge", new_callable=AsyncMock, return_value=b"audio") as mock_edge:
-            from bot.tts import synthesize
+        with patch("bot.audio.tts.synthesize_edge", new_callable=AsyncMock, return_value=b"audio") as mock_edge:
+            from bot.audio.tts import synthesize
             result = await synthesize("Hello", provider="edge")
             assert result == b"audio"
             mock_edge.assert_called_once()
@@ -94,9 +94,9 @@ class TestSynthesizeDispatch:
     @pytest.mark.asyncio
     async def test_synthesize_falls_back_on_failure(self):
         """synthesize() falls back to edge-tts when OpenAI fails."""
-        with patch("bot.tts.synthesize_openai", new_callable=AsyncMock, side_effect=Exception("API error")), \
-             patch("bot.tts.synthesize_edge", new_callable=AsyncMock, return_value=b"fallback") as mock_edge:
-            from bot.tts import synthesize
+        with patch("bot.audio.tts.synthesize_openai", new_callable=AsyncMock, side_effect=Exception("API error")), \
+             patch("bot.audio.tts.synthesize_edge", new_callable=AsyncMock, return_value=b"fallback") as mock_edge:
+            from bot.audio.tts import synthesize
             result = await synthesize("Hello", provider="openai")
             assert result == b"fallback"
             mock_edge.assert_called_once()

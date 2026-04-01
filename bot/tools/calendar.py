@@ -170,7 +170,7 @@ async def run_google_calendar(action: str, **kwargs) -> str:
             if "start_time" in updates:
                 job_id = await gcal._find_reminder_job(event_id)
                 if job_id:
-                    from bot import cron
+                    from bot.services import cron
                     await cron.delete_job(job_id)
                     # Note: Claude should re-create the reminder if still needed
 

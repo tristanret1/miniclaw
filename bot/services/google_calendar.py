@@ -20,7 +20,7 @@ def _build_service(account: str = ""):
     from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
 
-    from bot.google_oauth import get_valid_credentials
+    from bot.oauth.google import get_valid_credentials
 
     creds_dict = get_valid_credentials(account=account)
     if creds_dict is None:
@@ -276,7 +276,7 @@ async def delete_event(event_id: str) -> str:
     # Clean up any associated reminder cron job
     job_id = await _find_reminder_job(event_id)
     if job_id:
-        from bot import cron
+        from bot.services import cron
         await cron.delete_job(job_id)
         log.info("Deleted reminder job %s for event %s", job_id, event_id)
 
@@ -293,7 +293,7 @@ async def _schedule_urgent_reminder(
     channel_id: str = "",
 ) -> str:
     """Schedule a one-shot cron job as an urgent event reminder."""
-    from bot import cron
+    from bot.services import cron
 
     _cron_tz = get_config().services.cron.timezone
     tz = ZoneInfo(_cron_tz)

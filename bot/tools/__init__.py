@@ -75,7 +75,7 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None,
             ephemeral=tool_input.get("ephemeral", False),
         )
     if tool_name == "cron_create":
-        from bot import cron
+        from bot.services import cron
         return await cron.create_job(
             name=tool_input["name"],
             schedule_type=tool_input["schedule_type"],
@@ -89,12 +89,12 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None,
             delivery_channel=tool_input.get("delivery_channel", "discord"),
         )
     if tool_name == "cron_list":
-        from bot import cron
+        from bot.services import cron
         return await cron.list_jobs(
             include_disabled=tool_input.get("include_disabled", False),
         )
     if tool_name == "cron_delete":
-        from bot import cron
+        from bot.services import cron
         return await cron.delete_job(job_id=tool_input["job_id"])
     if tool_name == "sms":
         return await run_sms(
@@ -123,7 +123,7 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None,
         gcal_input = {k: v for k, v in tool_input.items() if k != "action"}
         return await run_google_calendar(action=tool_input.get("action", ""), **gcal_input)
     if tool_name == "health_log":
-        from bot import health
+        from bot.services import health
         log_type = tool_input.get("type", "")
         date = tool_input.get("date", "")
         if log_type == "weight":
@@ -151,13 +151,13 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None,
             )
         return f"Unknown health log type: {log_type}. Use: weight, sleep, exercise."
     if tool_name == "health_stats":
-        from bot import health
+        from bot.services import health
         return await health.get_stats(
             stat_type=tool_input.get("stat_type", "overview"),
             days=tool_input.get("days", 30),
         )
     if tool_name == "health_goal":
-        from bot import health
+        from bot.services import health
         return await health.set_weight_goal(
             start_weight=tool_input["start_weight"],
             target_weight=tool_input["target_weight"],

@@ -1,4 +1,4 @@
-"""Tests for bot.stt — STT (speech-to-text) provider."""
+"""Tests for bot.audio.stt — STT (speech-to-text) provider."""
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
@@ -10,7 +10,7 @@ class TestWhisperSTT:
     @pytest.mark.asyncio
     async def test_transcribe_returns_text(self):
         """transcribe() calls Whisper API and returns transcription text."""
-        from bot.stt import transcribe
+        from bot.audio.stt import transcribe
 
         mock_transcription = MagicMock()
         mock_transcription.text = "hello world"
@@ -24,7 +24,7 @@ class TestWhisperSTT:
     @pytest.mark.asyncio
     async def test_transcribe_passes_model(self):
         """transcribe() passes the configured model to Whisper API."""
-        from bot.stt import transcribe
+        from bot.audio.stt import transcribe
 
         mock_transcription = MagicMock()
         mock_transcription.text = "test"
@@ -39,7 +39,7 @@ class TestWhisperSTT:
     @pytest.mark.asyncio
     async def test_transcribe_sends_wav_file(self):
         """transcribe() wraps raw PCM bytes in a WAV container for the API."""
-        from bot.stt import transcribe
+        from bot.audio.stt import transcribe
 
         mock_transcription = MagicMock()
         mock_transcription.text = "test"
@@ -55,7 +55,7 @@ class TestWhisperSTT:
     @pytest.mark.asyncio
     async def test_transcribe_empty_audio_returns_empty(self):
         """transcribe() returns empty string for empty audio input."""
-        from bot.stt import transcribe
+        from bot.audio.stt import transcribe
 
         result = await transcribe(b"")
         assert result == ""
@@ -63,7 +63,7 @@ class TestWhisperSTT:
     @pytest.mark.asyncio
     async def test_transcribe_handles_api_error(self):
         """transcribe() returns empty string on API error."""
-        from bot.stt import transcribe
+        from bot.audio.stt import transcribe
 
         mock_client = AsyncMock()
         mock_client.audio.transcriptions.create = AsyncMock(side_effect=Exception("API down"))
@@ -74,7 +74,7 @@ class TestWhisperSTT:
     @pytest.mark.asyncio
     async def test_transcribe_short_audio_skipped(self):
         """transcribe() returns empty for audio shorter than 0.5s."""
-        from bot.stt import transcribe
+        from bot.audio.stt import transcribe
 
         result = await transcribe(b"\x00" * 100)  # way too short
         assert result == ""

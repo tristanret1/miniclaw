@@ -182,7 +182,7 @@ def create_bot(agent: Agent) -> discord.Client:
         # Start cron scheduler only once (first agent)
         if not _cron_started:
             if _cfg.services.cron.enabled:
-                from bot.cron import get_scheduler
+                from bot.services.cron import get_scheduler
                 scheduler = get_scheduler()
                 await scheduler.start(bot)
                 print("Cron scheduler started")

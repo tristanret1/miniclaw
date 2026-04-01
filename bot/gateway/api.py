@@ -16,7 +16,7 @@ from bot import hooks
 from bot.config import get_config
 from bot.logger import get_logger
 from bot.message import build_user_content
-from bot.status import AgentStatusTracker, AgentState
+from bot.gateway.status import AgentStatusTracker, AgentState
 
 log = get_logger("api")
 

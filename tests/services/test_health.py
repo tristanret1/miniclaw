@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from bot import health
+from bot.services import health
 
 
 @pytest.fixture(autouse=True)

@@ -1,4 +1,4 @@
-"""Tests for bot.cron — schedule computation, backoff, and helpers."""
+"""Tests for bot.services.cron — schedule computation, backoff, and helpers."""
 
 import time
 from datetime import datetime
@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from bot.cron import (
+from bot.services.cron import (
     CronJob,
     _parse_duration_seconds,
     compute_next_run,

@@ -25,7 +25,7 @@ def setup_codex():
 
 def _get_google_client_creds() -> tuple[str, str]:
     """Get Google OAuth client_id/secret — reuse existing or prompt."""
-    from bot.google_oauth import load_credentials
+    from bot.oauth.google import load_credentials
 
     # Check any existing credentials for client_id/secret
     for account in ("life", "work", ""):
@@ -44,7 +44,7 @@ def _get_google_client_creds() -> tuple[str, str]:
 
 def _authorize_google_account(account: str, label: str):
     """Authorize a single Google account (life or work)."""
-    from bot.google_oauth import authorize
+    from bot.oauth.google import authorize
 
     client_id, client_secret = _get_google_client_creds()
     if not client_id or not client_secret:
