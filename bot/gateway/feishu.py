@@ -204,12 +204,14 @@ async def start_feishu_gateway() -> None:
             .uri("/open-apis/bot/v3/info") \
             .build()
         resp = await _api_client.arequest(req)
-        if resp.success():
-            bot_info = json.loads(resp.raw.content).get("bot", {})
+        raw_body = resp.raw.content if resp.raw else b""
+        body = json.loads(raw_body) if raw_body else {}
+        if body.get("code", -1) == 0:
+            bot_info = body.get("bot", {})
             _bot_open_id = bot_info.get("open_id")
             log.info("feishu bot: %s (open_id=%s)", bot_info.get("app_name"), _bot_open_id)
         else:
-            log.warning("failed to get bot info: code=%s msg=%s", resp.code, resp.msg)
+            log.warning("failed to get bot info: %s", raw_body[:500])
     except Exception as e:
         log.warning("failed to get bot info: %s", e)
 
