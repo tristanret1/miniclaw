@@ -196,7 +196,7 @@ async def start_feishu_gateway() -> None:
         name="feishu",
         discord_token="",  # not used
         workspace_dir=feishu_workspace,
-        model="claude-opus-4-6-20250801",
+        model="claude-opus-4-6",
     )
     _feishu_agent.session_mgr = SessionManager(db_path=_feishu_agent.sessions_db)
     log.info("feishu agent initialized (workspace=%s)", feishu_workspace)
