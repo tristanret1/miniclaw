@@ -212,10 +212,14 @@ async def start_feishu_gateway() -> None:
     except Exception as e:
         log.warning("failed to get bot info: %s", e)
 
-    # Event handler
+    # Event handler (register noop for events we don't care about to suppress SDK warnings)
+    def _noop(data: object) -> None:
+        pass
+
     event_handler = (
         lark.EventDispatcherHandler.builder("", "")
         .register_p2_im_message_receive_v1(_on_message_receive)
+        .register_p2_im_chat_access_event_bot_p2p_chat_entered_v1(_noop)
         .build()
     )
 
