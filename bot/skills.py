@@ -147,18 +147,28 @@ def load_skills(skills_dir: Path) -> list[Skill]:
 
 
 def build_skills_prompt(skills: list[Skill]) -> str:
-    """Format model-invocable skills as an XML block for the system prompt."""
+    """Format model-invocable skills as a catalog for the system prompt.
+
+    Only name + description are included (not the full body).
+    The model should read the SKILL.md file on-demand when a skill is needed.
+    """
     model_skills = [s for s in skills if s.model_invocable]
     if not model_skills:
         return ""
 
-    lines = ["<available-skills>"]
+    lines = [
+        "<available-skills>",
+        "Below is a catalog of available skills. Each skill has specialized instructions.",
+        "When a user request matches a skill's description, read the full SKILL.md file",
+        "using the exec tool: `cat skills/<skill-name>/SKILL.md`",
+        "When a user invokes a skill with /<skill-name>, the full content is provided automatically.",
+        "",
+    ]
     for s in model_skills:
-        emoji_attr = f' emoji="{s.emoji}"' if s.emoji else ""
-        invocable_attr = ' user-invocable="true"' if s.user_invocable else ""
-        lines.append(f'<skill name="{s.name}" description="{s.description}"{emoji_attr}{invocable_attr}>')
-        lines.append(s.body)
-        lines.append("</skill>")
+        emoji = f"{s.emoji} " if s.emoji else ""
+        invocable = " (user-invocable)" if s.user_invocable else ""
+        lines.append(f'- **{emoji}{s.name}**{invocable}: {s.description}')
+        lines.append(f'  Location: skills/{s.name}/SKILL.md')
     lines.append("</available-skills>")
 
     return "\n".join(lines)

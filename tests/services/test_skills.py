@@ -204,11 +204,13 @@ class TestBuildSkillsPrompt:
     def test_empty_skills(self):
         assert build_skills_prompt([]) == ""
 
-    def test_generates_xml(self, sample_skill):
+    def test_generates_catalog(self, sample_skill):
         result = build_skills_prompt([sample_skill])
         assert "<available-skills>" in result
-        assert 'name="greeting"' in result
-        assert "greet the user warmly" in result
+        assert "**greeting**" in result
+        assert "Say hello in a fun way" in result  # description included
+        assert "skills/greeting/SKILL.md" in result  # location included
+        assert sample_skill.body not in result  # body NOT included
 
     def test_excludes_non_model_invocable(self):
         skill = Skill(name="s", description="d", body="b", model_invocable=False)
