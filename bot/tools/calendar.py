@@ -168,7 +168,7 @@ async def run_google_calendar(action: str, **kwargs) -> str:
 
             # If start_time changes, handle reminder update
             if "start_time" in updates:
-                job_id = gcal._find_reminder_job(event_id)
+                job_id = await gcal._find_reminder_job(event_id)
                 if job_id:
                     from bot import cron
                     await cron.delete_job(job_id)

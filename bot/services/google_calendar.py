@@ -274,7 +274,7 @@ async def delete_event(event_id: str) -> str:
     ).execute()
 
     # Clean up any associated reminder cron job
-    job_id = _find_reminder_job(event_id)
+    job_id = await _find_reminder_job(event_id)
     if job_id:
         from bot import cron
         await cron.delete_job(job_id)
@@ -335,19 +335,19 @@ async def _schedule_urgent_reminder(
     return job_result
 
 
-def _find_reminder_job(event_id: str) -> str | None:
+async def _find_reminder_job(event_id: str) -> str | None:
     """Find a cron job associated with a calendar event. Returns job_id or None."""
     try:
-        from bot.cron import _get_db
+        from bot.storage.db import get_pool
 
         context_marker = f"calendar_event_id:{event_id}"
-        db = _get_db()
-        row = db.execute(
-            "SELECT id FROM cron_jobs WHERE context LIKE ?",
-            (f"%{context_marker}%",),
-        ).fetchone()
+        pool = await get_pool()
+        row = await pool.fetchrow(
+            "SELECT id FROM cron_jobs WHERE context LIKE $1",
+            f"%{context_marker}%",
+        )
         if row:
-            return row[0]
+            return row["id"]
     except Exception as e:
         log.warning("Failed to search for reminder job for event %s: %s", event_id, e)
 

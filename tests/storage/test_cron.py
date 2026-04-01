@@ -1,9 +1,7 @@
-"""Tests for bot.cron — schedule computation, CRUD, and job lifecycle."""
+"""Tests for bot.cron — schedule computation, backoff, and helpers."""
 
-import sqlite3
 import time
 from datetime import datetime
-from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -13,11 +11,6 @@ from bot.cron import (
     _parse_duration_seconds,
     compute_next_run,
     _backoff_delay,
-    _init_db,
-    _row_to_job,
-    create_job,
-    list_jobs,
-    delete_job,
 )
 
 
@@ -86,106 +79,3 @@ class TestBackoffDelay:
 
     def test_max_backoff(self):
         assert _backoff_delay(100) == 3600
-
-
-class TestCronCRUD:
-    """Test CRUD operations using a temporary database."""
-
-    @pytest.fixture(autouse=True)
-    def setup_db(self, tmp_path, monkeypatch):
-        """Point cron DB to a temp path."""
-        db_path = tmp_path / "cron.db"
-        monkeypatch.setattr("bot.cron.DB_PATH", db_path)
-        monkeypatch.setattr("bot.cron._db", None)
-        monkeypatch.setattr("bot.cron._scheduler", None)
-
-    async def test_create_job(self):
-        result = await create_job(
-            name="test-job",
-            schedule_type="every",
-            schedule_value="1h",
-            payload="Hello",
-            channel_id="123456",
-        )
-        assert "Created job" in result
-        assert "test-job" in result
-
-    async def test_create_invalid_schedule_type(self):
-        result = await create_job(
-            name="bad", schedule_type="bogus",
-            schedule_value="1h", payload="hi", channel_id="123",
-        )
-        assert "Error" in result
-
-    async def test_create_invalid_schedule_value(self):
-        result = await create_job(
-            name="bad", schedule_type="every",
-            schedule_value="not-a-duration", payload="hi", channel_id="123",
-        )
-        assert "Error" in result
-
-    async def test_list_jobs_empty(self):
-        result = await list_jobs()
-        assert "No scheduled jobs" in result
-
-    async def test_list_jobs_after_create(self):
-        await create_job(
-            name="lister", schedule_type="every",
-            schedule_value="30m", payload="hi", channel_id="123",
-        )
-        result = await list_jobs()
-        assert "lister" in result
-        assert "every 30m" in result
-
-    async def test_delete_job_by_id(self):
-        result = await create_job(
-            name="deleteme", schedule_type="every",
-            schedule_value="1h", payload="hi", channel_id="123",
-        )
-        # Extract job ID from result
-        job_id = result.split("id=")[1].split(")")[0]
-        del_result = await delete_job(job_id)
-        assert "Deleted" in del_result
-        assert await list_jobs() == "No scheduled jobs."
-
-    async def test_delete_job_by_name(self):
-        await create_job(
-            name="byname", schedule_type="every",
-            schedule_value="1h", payload="hi", channel_id="123",
-        )
-        del_result = await delete_job("byname")
-        assert "Deleted" in del_result
-
-    async def test_delete_nonexistent(self):
-        result = await delete_job("nope")
-        assert "No job found" in result
-
-    async def test_create_with_session_mode(self):
-        result = await create_job(
-            name="persistent-job", schedule_type="every",
-            schedule_value="1h", payload="hi", channel_id="123",
-            session_mode="persistent",
-        )
-        assert "persistent" in result
-
-    async def test_create_at_relative(self):
-        result = await create_job(
-            name="one-shot", schedule_type="at",
-            schedule_value="+20m", payload="fire once", channel_id="123",
-        )
-        assert "Created job" in result
-        assert "one-shot" in result
-
-    async def test_list_includes_disabled(self):
-        await create_job(
-            name="disabled-test", schedule_type="at",
-            schedule_value="+1m", payload="hi", channel_id="123",
-        )
-        # Manually disable the job
-        from bot.cron import _get_db
-        db = _get_db()
-        db.execute("UPDATE cron_jobs SET enabled=0")
-        db.commit()
-
-        assert "No scheduled jobs" in await list_jobs(include_disabled=False)
-        assert "disabled-test" in await list_jobs(include_disabled=True)

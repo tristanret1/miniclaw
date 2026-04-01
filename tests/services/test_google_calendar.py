@@ -295,28 +295,29 @@ class TestScheduleUrgentReminder:
 # ── _find_reminder_job (mocked) ───────────────────────────────────────────
 
 class TestFindReminderJob:
-    @patch("bot.cron._get_db")
-    def test_found(self, mock_get_db):
-        mock_db = MagicMock()
-        mock_get_db.return_value = mock_db
-        mock_db.execute.return_value.fetchone.return_value = ("job-abc",)
+    @patch("bot.storage.db.get_pool")
+    async def test_found(self, mock_get_pool):
+        mock_pool = AsyncMock()
+        mock_get_pool.return_value = mock_pool
+        mock_pool.fetchrow.return_value = {"id": "job-abc"}
 
-        result = _find_reminder_job("evt1")
+        result = await _find_reminder_job("evt1")
         assert result == "job-abc"
 
-    @patch("bot.cron._get_db")
-    def test_not_found(self, mock_get_db):
-        mock_db = MagicMock()
-        mock_get_db.return_value = mock_db
-        mock_db.execute.return_value.fetchone.return_value = None
+    @patch("bot.storage.db.get_pool")
+    async def test_not_found(self, mock_get_pool):
+        mock_pool = AsyncMock()
+        mock_get_pool.return_value = mock_pool
+        mock_pool.fetchrow.return_value = None
 
-        result = _find_reminder_job("evt-nonexistent")
+        result = await _find_reminder_job("evt-nonexistent")
         assert result is None
 
-    def test_error_returns_none(self):
-        with patch("bot.cron._get_db", side_effect=Exception("DB error")):
-            result = _find_reminder_job("evt1")
-            assert result is None
+    @patch("bot.storage.db.get_pool")
+    async def test_error_returns_none(self, mock_get_pool):
+        mock_get_pool.side_effect = Exception("DB error")
+        result = await _find_reminder_job("evt1")
+        assert result is None
 
 
 # ── Integration tests (real Google Calendar API) ─────────────────────────
