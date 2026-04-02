@@ -61,6 +61,7 @@ class Gateway:
         where the source is virtual but delivery goes to a real channel.
         """
         agent = self.get_agent(msg.channel)
+        agent_name = getattr(agent, "name", "default") if agent else "default"
 
         # Determine which adapter delivers the reply
         delivery = msg.delivery_channel or msg.channel
@@ -68,6 +69,11 @@ class Gateway:
         if not adapter:
             log.error("no adapter for delivery channel=%s (source=%s)", delivery, msg.channel)
             return
+
+        log.info("handle: source=%s delivery=%s session=%s agent=%s streaming=%s reply_ctx_keys=%s",
+                 msg.channel, delivery, msg.session_key, agent_name,
+                 adapter.supports_streaming and not msg.delivery_channel,
+                 list(msg.reply_ctx.keys()))
 
         content = build_user_content(msg.text, msg.image_urls or None)
 
@@ -79,10 +85,15 @@ class Gateway:
             async for chunk in llm.stream(msg.session_key, content, agent=agent):
                 await adapter.send_chunk(msg.reply_ctx, chunk, done=False)
             await adapter.send_chunk(msg.reply_ctx, "", done=True)
+            log.info("handle: streaming complete for session=%s", msg.session_key)
         else:
             reply = await llm.reply(msg.session_key, content, agent=agent)
+            log.info("handle: reply len=%d for session=%s", len(reply), msg.session_key)
             if reply.strip():
-                await adapter.send(msg.reply_ctx, reply)
+                result = await adapter.send(msg.reply_ctx, reply)
+                log.info("handle: send result=%s for session=%s", result, msg.session_key)
+            else:
+                log.warning("handle: empty reply for session=%s", msg.session_key)
 
     async def deliver(self, channel: str, reply_ctx: dict, text: str) -> str:
         """Deliver a message through a specific channel adapter. Used by cron."""
