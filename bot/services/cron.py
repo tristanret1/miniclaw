@@ -378,37 +378,17 @@ class CronScheduler:
             from bot import llm
             reply = await llm.reply(session_key, job.payload)
 
-            # Deliver result
+            # Deliver result through Gateway
             if reply.strip():
-                if job.delivery_channel == "sms":
-                    try:
-                        from bot.tools import run_sms
-                        result = await run_sms(to=job.channel_id, message=reply)
-                        log.info("job %s delivered via SMS to %s: %s", job.name, job.channel_id, result)
-                    except Exception as e:
-                        log.error("job %s SMS delivery failed: %s", job.name, e)
-                        raise
-                elif job.delivery_channel == "imessage":
-                    try:
-                        from bot.channel.imessage import get_gateway_client, send_imessage, run_imessage_send
-                        client = get_gateway_client()
-                        if client:
-                            result = await send_imessage(client, to=job.channel_id, message=reply)
-                        else:
-                            result = await run_imessage_send(to=job.channel_id, message=reply)
-                        log.info("job %s delivered via iMessage to %s: %s", job.name, job.channel_id, result)
-                    except Exception as e:
-                        log.error("job %s iMessage delivery failed: %s", job.name, e)
-                        raise
-                elif job.delivery_channel == "feishu":
-                    try:
-                        from bot.channel.feishu import send_feishu_message
-                        result = await send_feishu_message(chat_id=job.channel_id, message=reply)
-                        log.info("job %s delivered via Feishu to %s: %s", job.name, job.channel_id, result)
-                    except Exception as e:
-                        log.error("job %s Feishu delivery failed: %s", job.name, e)
-                        raise
-                elif self._bot:
+                from bot.gateway import get_gateway
+                gw = get_gateway()
+                if gw:
+                    reply_ctx = {"target_id": job.channel_id}
+                    result = await gw.deliver(job.delivery_channel, reply_ctx, reply)
+                    log.info("job %s delivered via %s to %s: %s",
+                             job.name, job.delivery_channel, job.channel_id, result)
+                elif self._bot and job.delivery_channel == "discord":
+                    # Fallback: Discord delivery without gateway
                     try:
                         channel = self._bot.get_channel(int(job.channel_id))
                         if channel is None:
@@ -418,6 +398,8 @@ class CronScheduler:
                     except Exception as e:
                         log.error("job %s delivery failed: %s", job.name, e)
                         raise
+                else:
+                    log.error("job %s: no gateway and no bot for delivery via %s", job.name, job.delivery_channel)
 
             return reply
 
