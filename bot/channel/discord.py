@@ -217,13 +217,13 @@ class DiscordAdapter(ChannelAdapter):
                 log.info("skill command: /%s args=%r", skill.name, args[:100] if args else "")
                 content = build_skill_user_message(skill, args)
 
-        # Prepend sender metadata
+        # Prepend sender metadata (includes channel_id so tools like cron_create can use it)
         from zoneinfo import ZoneInfo
         tz = ZoneInfo(get_config().services.cron.timezone)
         local_time = message.created_at.astimezone(tz)
         timestamp = local_time.strftime("%Y-%m-%d %H:%M %Z")
         channel_name = getattr(message.channel, "name", "DM")
-        meta = f"[{message.author.display_name} (ID:{message.author.id}) · #{channel_name} · {timestamp}]\n"
+        meta = f"[{message.author.display_name} (ID:{message.author.id}) · #{channel_name} (channel_id:{message.channel.id}) · {timestamp}]\n"
         content = meta + content
 
         msg = InboundMessage(

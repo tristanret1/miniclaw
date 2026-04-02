@@ -29,7 +29,7 @@ CRON_CREATE_TOOL = {
             },
             "channel_id": {
                 "type": "string",
-                "description": "Discord channel ID to deliver results to.",
+                "description": "Channel/chat ID to deliver results to. For Discord, use the channel_id from the message metadata. For feishu, use chat_id (oc_xxx). For sms, use E.164 phone number.",
             },
             "timezone": {
                 "type": "string",
