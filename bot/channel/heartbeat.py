@@ -206,8 +206,8 @@ class HeartbeatRunner:
     def __init__(
         self,
         agent,
-        deliver_fn,
         *,
+        delivery_channel: str = "discord",
         channel_id: str = "",
         interval: str = "",
         active_hours_start: str = "",
@@ -217,7 +217,7 @@ class HeartbeatRunner:
         isolated_session: bool = True,
     ):
         self.agent = agent
-        self._deliver_fn = deliver_fn  # async fn(text: str) -> None
+        self._delivery_channel = delivery_channel
         self._channel_id = channel_id
         self._interval = interval or DEFAULT_INTERVAL
         self._active_start = active_hours_start
@@ -285,7 +285,7 @@ class HeartbeatRunner:
         # Session key: use channel_id to share memory with the channel
         session_key = heartbeat_key(self._channel_id, isolated=self._isolated)
 
-        # Call LLM
+        # Call LLM via gateway's agent resolution
         try:
             from bot import llm
             reply = await llm.reply(session_key, prompt, agent=self.agent)
@@ -314,14 +314,22 @@ class HeartbeatRunner:
             log.info("heartbeat skipped: duplicate within 24h (agent=%s)", self.agent.name)
             return "skipped:duplicate"
 
-        # Deliver
+        # Deliver through Gateway
         try:
-            await self._deliver_fn(cleaned)
+            from bot.gateway import get_gateway
+            gw = get_gateway()
+            if gw:
+                reply_ctx = {"target_id": self._channel_id}
+                result = await gw.deliver(self._delivery_channel, reply_ctx, cleaned)
+                if "Error" in result:
+                    raise RuntimeError(result)
+            else:
+                raise RuntimeError("gateway not available")
             self._last_text = cleaned
             self._last_sent_at = now
             log.info(
-                "heartbeat delivered (%d chars, agent=%s, reason=%s)",
-                len(cleaned), self.agent.name, reason,
+                "heartbeat delivered via %s (%d chars, agent=%s, reason=%s)",
+                self._delivery_channel, len(cleaned), self.agent.name, reason,
             )
             return "sent"
         except Exception as e:

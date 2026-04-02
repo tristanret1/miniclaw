@@ -54,11 +54,19 @@ class Gateway:
         return self._agents.get(agent_name)
 
     async def handle(self, msg: InboundMessage) -> None:
-        """Central handler — called by adapters when they receive a message."""
+        """Central handler — called by adapters or schedulers.
+
+        If msg.delivery_channel is set, the reply is delivered through that
+        adapter instead of the source channel. This supports cron/heartbeat
+        where the source is virtual but delivery goes to a real channel.
+        """
         agent = self.get_agent(msg.channel)
-        adapter = self._adapters.get(msg.channel)
+
+        # Determine which adapter delivers the reply
+        delivery = msg.delivery_channel or msg.channel
+        adapter = self._adapters.get(delivery)
         if not adapter:
-            log.error("no adapter for channel=%s", msg.channel)
+            log.error("no adapter for delivery channel=%s (source=%s)", delivery, msg.channel)
             return
 
         content = build_user_content(msg.text, msg.image_urls or None)

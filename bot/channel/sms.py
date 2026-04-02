@@ -78,9 +78,12 @@ class SMSAdapter(ChannelAdapter):
     # ── Outbound ─────────────────────────────────────────────────────────────
 
     async def send(self, reply_ctx: dict, text: str) -> str:
-        """Send SMS via Twilio."""
+        """Send SMS via Twilio. Supports target_id for cron/heartbeat delivery."""
         from bot.tools import run_sms
-        return await run_sms(to=reply_ctx["phone_number"], message=text)
+        phone = reply_ctx.get("phone_number") or reply_ctx.get("target_id")
+        if not phone:
+            return "Error: no phone_number or target_id in reply_ctx"
+        return await run_sms(to=phone, message=text)
 
     # ── Inbound ───────────────────────────────────────────────────────────────
 

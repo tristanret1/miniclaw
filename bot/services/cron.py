@@ -360,48 +360,29 @@ class CronScheduler:
         async with self._sem:
             log.info("executing job: %s (%s) mode=%s", job.name, job.id, job.session_mode)
 
-            # Build per-job system prompt
-            system_prompt = get_system_prompt()
-            task_header = f"\n\n---\n\n[Scheduled Task: {job.name}]"
-            if job.context:
-                system_prompt += task_header + "\n" + job.context
-            else:
-                system_prompt += task_header
-
-            # Use session key for persistent mode, or isolated
             if job.session_mode == "persistent":
                 session_key = cron_key(job.id)
             else:
                 session_key = cron_key(job.id, isolated=True)
 
-            # Use the unified LLM entry point
-            from bot import llm
-            reply = await llm.reply(session_key, job.payload)
+            # Submit to Gateway as a virtual inbound message
+            from bot.gateway import get_gateway
+            from bot.channel import InboundMessage
+            gw = get_gateway()
+            if not gw:
+                log.error("job %s: gateway not available", job.name)
+                return ""
 
-            # Deliver result through Gateway
-            if reply.strip():
-                from bot.gateway import get_gateway
-                gw = get_gateway()
-                if gw:
-                    reply_ctx = {"target_id": job.channel_id}
-                    result = await gw.deliver(job.delivery_channel, reply_ctx, reply)
-                    log.info("job %s delivered via %s to %s: %s",
-                             job.name, job.delivery_channel, job.channel_id, result)
-                elif self._bot and job.delivery_channel == "discord":
-                    # Fallback: Discord delivery without gateway
-                    try:
-                        channel = self._bot.get_channel(int(job.channel_id))
-                        if channel is None:
-                            channel = await self._bot.fetch_channel(int(job.channel_id))
-                        await send_chunks(channel, reply)
-                        log.info("job %s delivered to channel %s (%d chars)", job.name, job.channel_id, len(reply))
-                    except Exception as e:
-                        log.error("job %s delivery failed: %s", job.name, e)
-                        raise
-                else:
-                    log.error("job %s: no gateway and no bot for delivery via %s", job.name, job.delivery_channel)
+            msg = InboundMessage(
+                channel="cron",
+                session_key=session_key,
+                text=job.payload,
+                delivery_channel=job.delivery_channel,
+                reply_ctx={"target_id": job.channel_id},
+            )
+            await gw.handle(msg)
 
-            return reply
+            return "delivered"
 
     async def _apply_result(self, job: CronJob, result: str | BaseException) -> None:
         """Update job state after execution."""

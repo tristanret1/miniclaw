@@ -61,13 +61,25 @@ class DiscordAdapter(ChannelAdapter):
             await self._bot.close()
 
     async def send(self, reply_ctx: dict, text: str) -> str:
-        """Send a complete reply to Discord."""
+        """Send a complete reply to Discord.
+
+        Supports two modes:
+        - reply_ctx["message"]: reply to a specific message (normal chat)
+        - reply_ctx["target_id"]: send to a channel by ID (cron/heartbeat delivery)
+        """
         message: discord.Message | None = reply_ctx.get("message")
-        if not message:
-            return "Error: no message in reply_ctx"
+        target_id: str | None = reply_ctx.get("target_id")
         try:
-            for i in range(0, len(text), 2000):
-                await message.reply(text[i : i + 2000])
+            if message:
+                for i in range(0, len(text), 2000):
+                    await message.reply(text[i : i + 2000])
+            elif target_id and self._bot:
+                channel = self._bot.get_channel(int(target_id))
+                if channel is None:
+                    channel = await self._bot.fetch_channel(int(target_id))
+                await send_chunks(channel, text)
+            else:
+                return "Error: no message or target_id in reply_ctx"
             return "ok"
         except Exception as e:
             log.error("discord send error: %s", e)

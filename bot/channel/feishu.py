@@ -144,16 +144,19 @@ class FeishuAdapter(ChannelAdapter):
     # ── Outbound ─────────────────────────────────────────────────────────────
 
     async def send(self, reply_ctx: dict, text: str) -> str:
-        """Send reply. Tries message reply first, falls back to chat send."""
+        """Send reply. Tries message reply first, falls back to chat send.
+
+        Supports reply_ctx["target_id"] for cron/heartbeat delivery.
+        """
         message_id = reply_ctx.get("message_id")
-        chat_id = reply_ctx.get("chat_id")
+        chat_id = reply_ctx.get("chat_id") or reply_ctx.get("target_id")
         if message_id:
             result = await self._reply(message_id, text)
             if result == "ok":
                 return result
         if chat_id:
             return await self._send(chat_id, text)
-        return "Error: no chat_id or message_id in reply_ctx"
+        return "Error: no chat_id, target_id, or message_id in reply_ctx"
 
     async def _send(self, chat_id: str, message: str) -> str:
         """Send a message to a Feishu chat."""

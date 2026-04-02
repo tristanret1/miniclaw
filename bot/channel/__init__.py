@@ -7,11 +7,12 @@ from dataclasses import dataclass, field
 @dataclass
 class InboundMessage:
     """Standardized message from any channel into the Gateway."""
-    channel: str           # "discord", "feishu", "sms", "imessage", "cron"
+    channel: str           # source: "discord", "feishu", "sms", "imessage", "cron", "heartbeat"
     session_key: str
     text: str
     image_urls: list[str] = field(default_factory=list)
     reply_ctx: dict = field(default_factory=dict)
+    delivery_channel: str = ""  # if set, reply goes to this adapter instead of source channel
 
 
 class ChannelAdapter(ABC):

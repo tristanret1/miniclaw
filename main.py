@@ -111,8 +111,28 @@ async def main():
     if _cfg.services.cron.enabled:
         from bot.services.cron import get_scheduler
         scheduler = get_scheduler()
-        await scheduler.start(None)  # no bot reference needed — delivers through gateway
+        await scheduler.start(None)
         print("Cron scheduler started")
+
+    # Start heartbeat (independent of any channel — delivers through gateway)
+    hb_cfg = _gw_cfg.heartbeat
+    if hb_cfg.enabled and hb_cfg.channel_id:
+        from bot.channel.heartbeat import HeartbeatRunner
+        default_agent = agents[0] if agents else None
+        if default_agent:
+            runner = HeartbeatRunner(
+                agent=default_agent,
+                delivery_channel="discord",
+                channel_id=str(hb_cfg.channel_id),
+                interval=hb_cfg.interval,
+                active_hours_start=hb_cfg.active_start,
+                active_hours_end=hb_cfg.active_end,
+                active_hours_tz=hb_cfg.active_tz,
+                ack_max_chars=hb_cfg.ack_max_chars,
+                isolated_session=hb_cfg.isolated,
+            )
+            await runner.start()
+            print(f"Heartbeat started (every {hb_cfg.interval})")
 
     if _voice_only:
         from bot.channel.voice import start_voice_gateway

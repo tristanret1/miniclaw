@@ -179,70 +179,71 @@ class TestHeartbeatRunner:
             "name": "test",
             "workspace_dir": tmp_path,
         })()
-        deliver = AsyncMock()
-        runner = HeartbeatRunner(agent=agent, deliver_fn=deliver)
+        runner = HeartbeatRunner(agent=agent, delivery_channel="discord")
         result = await runner.run_once()
         assert result == "skipped:empty-heartbeat-file"
-        deliver.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_ok_empty_response(self, mock_agent):
-        deliver = AsyncMock()
-        runner = HeartbeatRunner(agent=mock_agent, deliver_fn=deliver)
+        runner = HeartbeatRunner(agent=mock_agent, delivery_channel="discord")
 
         with patch("bot.llm.reply", new_callable=AsyncMock, return_value="HEARTBEAT_OK"):
             result = await runner.run_once()
 
         assert result == "ok-empty"
-        deliver.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_delivers_alert(self, mock_agent):
-        deliver = AsyncMock()
-        runner = HeartbeatRunner(agent=mock_agent, deliver_fn=deliver)
+        mock_gw = AsyncMock()
+        mock_gw.deliver = AsyncMock(return_value="ok")
+        runner = HeartbeatRunner(agent=mock_agent, delivery_channel="discord")
 
         alert = "You have 3 urgent emails that need attention right now."
-        with patch("bot.llm.reply", new_callable=AsyncMock, return_value=alert):
+        with patch("bot.llm.reply", new_callable=AsyncMock, return_value=alert), \
+             patch("bot.gateway.get_gateway", return_value=mock_gw):
             result = await runner.run_once()
 
         assert result == "sent"
-        deliver.assert_called_once_with(alert)
+        mock_gw.deliver.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_delivers_stripped_alert(self, mock_agent):
-        deliver = AsyncMock()
-        runner = HeartbeatRunner(agent=mock_agent, deliver_fn=deliver)
+        mock_gw = AsyncMock()
+        mock_gw.deliver = AsyncMock(return_value="ok")
+        runner = HeartbeatRunner(agent=mock_agent, delivery_channel="discord")
 
         long_alert = "A" * 400
         reply = f"HEARTBEAT_OK {long_alert}"
-        with patch("bot.llm.reply", new_callable=AsyncMock, return_value=reply):
+        with patch("bot.llm.reply", new_callable=AsyncMock, return_value=reply), \
+             patch("bot.gateway.get_gateway", return_value=mock_gw):
             result = await runner.run_once()
 
         assert result == "sent"
-        deliver.assert_called_once()
-        delivered_text = deliver.call_args[0][0]
+        mock_gw.deliver.assert_called_once()
+        delivered_text = mock_gw.deliver.call_args[0][2]  # (channel, ctx, text)
         assert long_alert in delivered_text
 
     @pytest.mark.asyncio
     async def test_dedup_within_24h(self, mock_agent):
-        deliver = AsyncMock()
-        runner = HeartbeatRunner(agent=mock_agent, deliver_fn=deliver)
+        mock_gw = AsyncMock()
+        mock_gw.deliver = AsyncMock(return_value="ok")
+        runner = HeartbeatRunner(agent=mock_agent, delivery_channel="discord")
 
         alert = "You have 3 urgent emails."
-        with patch("bot.llm.reply", new_callable=AsyncMock, return_value=alert):
+        with patch("bot.llm.reply", new_callable=AsyncMock, return_value=alert), \
+             patch("bot.gateway.get_gateway", return_value=mock_gw):
             r1 = await runner.run_once()
             r2 = await runner.run_once()
 
         assert r1 == "sent"
         assert r2 == "skipped:duplicate"
-        assert deliver.call_count == 1
+        assert mock_gw.deliver.call_count == 1
 
     @pytest.mark.asyncio
     async def test_skip_outside_active_hours(self, mock_agent):
-        deliver = AsyncMock()
         runner = HeartbeatRunner(
             agent=mock_agent,
-            deliver_fn=deliver,
+            delivery_channel="discord",
             active_hours_start="09:00",
             active_hours_end="09:00",  # same = disabled
         )
