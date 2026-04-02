@@ -61,13 +61,17 @@ miniclaw/
 │   │   ├── sms.py                   # SMS tools (Twilio)
 │   │   └── voice_tools.py           # Voice control tools
 │   │
-│   ├── gateway/                     # Non-Discord inbound/outbound gateways
-│   │   ├── __init__.py
-│   │   ├── api.py                   # HTTP/WS API gateway for external consumers
-│   │   ├── voice.py                 # Voice: mic → STT → wake → LLM → TTS → speaker
-│   │   ├── imessage.py              # iMessage gateway (imsg CLI via JSON-RPC)
-│   │   ├── sms.py                   # Twilio SMS inbound webhook (aiohttp)
+│   ├── gateway/                     # Gateway exchange (central message router)
+│   │   └── __init__.py              # Gateway class: route messages → LLM → deliver replies
+│   │
+│   ├── channel/                     # Channel adapters (transport only)
+│   │   ├── __init__.py              # ChannelAdapter ABC + InboundMessage dataclass
 │   │   ├── feishu.py                # Feishu: lark-oapi WebSocket long connection
+│   │   ├── sms.py                   # SMS: Twilio webhook (aiohttp)
+│   │   ├── discord.py               # (planned) Discord adapter
+│   │   ├── imessage.py              # iMessage (imsg CLI via JSON-RPC)
+│   │   ├── voice.py                 # Voice: mic → STT → wake → LLM → TTS → speaker
+│   │   ├── api.py                   # HTTP/WS API for external consumers
 │   │   ├── heartbeat.py             # Periodic agent polling (default-silent)
 │   │   └── status.py                # Agent online/offline status tracker
 │   │
