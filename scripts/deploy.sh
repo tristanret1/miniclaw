@@ -424,7 +424,6 @@ Wants=network-online.target
 Type=simple
 User=ubuntu
 WorkingDirectory=${APP_DIR}
-Environment=MINICLAW_GATEWAY=feishu,sms
 ExecStart=/bin/bash ${APP_DIR}/start.sh
 Restart=always
 RestartSec=5
