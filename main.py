@@ -171,14 +171,17 @@ async def main():
         # Full mode — Discord bots + Gateway exchange + legacy gateways
         gateway = _setup_gateway(agents, _gw_cfg)
 
-        # Register Discord adapters for each agent with a token
+        # Register Discord adapters — first one with token is the primary (used for delivery)
+        from bot.channel.discord import DiscordAdapter
+        primary_registered = False
         for agent in agents:
             if not agent.discord_token:
                 continue
-            from bot.channel.discord import DiscordAdapter
             discord_adapter = DiscordAdapter(agent)
-            gateway.register_adapter(discord_adapter)
-            gateway.set_channel_agent("discord", agent.name)
+            if not primary_registered:
+                gateway.register_adapter(discord_adapter)
+                gateway.set_channel_agent("discord", agent.name)
+                primary_registered = True
             await discord_adapter.start(gateway)
             tasks.append(discord_adapter.run(agent.discord_token))
 
