@@ -1,13 +1,13 @@
-"""Tests for bot/sms_gateway.py — Twilio SMS webhook."""
+"""Tests for bot/channel/sms.py — Twilio SMS channel adapter."""
 
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiohttp import web
-from aiohttp.test_utils import AioHTTPTestCase, TestClient, TestServer
+from aiohttp.test_utils import TestClient, TestServer
 
-from bot.gateway.sms import handle_incoming_sms, validate_twilio_signature
+from bot.channel.sms import SMSAdapter, validate_twilio_signature
 
 
 # ── Signature validation ────────────────────────────────────────────────────
@@ -64,21 +64,34 @@ class TestValidateTwilioSignature:
         assert validate_twilio_signature(url, {}, expected, auth_token) is True
 
 
-# ── Webhook handler ─────────────────────────────────────────────────────────
+# ── Adapter fixture ──────────────────────────────────────────────────────────
 
 @pytest.fixture
-def sms_app():
+def sms_adapter():
+    """Create an SMSAdapter with a fake gateway."""
+    adapter = SMSAdapter()
+    mock_gateway = MagicMock()
+    mock_gateway.handle = AsyncMock()
+    adapter._gateway = mock_gateway
+    return adapter
+
+
+@pytest.fixture
+def sms_app(sms_adapter):
     """Create an aiohttp app with the SMS webhook route."""
     app = web.Application()
-    app.router.add_post("/sms", handle_incoming_sms)
-    return app
+    app.router.add_post("/sms", sms_adapter._handle_incoming_sms)
+    return app, sms_adapter
 
+
+# ── Webhook handler ─────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_webhook_returns_empty_twiml(sms_app):
     """Webhook should return empty TwiML <Response/> immediately."""
-    with patch("bot.gateway.sms.get_secrets", return_value={"TWILIO_AUTH_TOKEN": "", "TWILIO_FROM_NUMBER": "", "TWILIO_ACCOUNT_SID": ""}):
-        async with TestClient(TestServer(sms_app)) as client:
+    app, adapter = sms_app
+    with patch("bot.channel.sms.get_secrets", return_value={"TWILIO_AUTH_TOKEN": "", "TWILIO_FROM_NUMBER": "", "TWILIO_ACCOUNT_SID": ""}):
+        async with TestClient(TestServer(app)) as client:
             resp = await client.post("/sms", data={
                 "From": "+14155551234",
                 "Body": "Hello bot",
@@ -96,11 +109,12 @@ async def test_webhook_returns_empty_twiml(sms_app):
 @pytest.mark.asyncio
 async def test_webhook_rejects_invalid_signature(sms_app):
     """Webhook should return 403 when signature validation fails."""
+    app, adapter = sms_app
     mock_secrets = {"TWILIO_AUTH_TOKEN": "real-token", "TWILIO_FROM_NUMBER": "", "TWILIO_ACCOUNT_SID": ""}
-    with patch("bot.gateway.sms.get_secrets", return_value=mock_secrets), \
-         patch("bot.gateway.sms.get_config") as mock_cfg:
+    with patch("bot.channel.sms.get_secrets", return_value=mock_secrets), \
+         patch("bot.channel.sms.get_config") as mock_cfg:
         mock_cfg.return_value.gateway.sms.webhook_url = "https://example.com/sms"
-        async with TestClient(TestServer(sms_app)) as client:
+        async with TestClient(TestServer(app)) as client:
             resp = await client.post(
                 "/sms",
                 data={"From": "+14155551234", "Body": "Hello", "NumMedia": "0"},
@@ -110,17 +124,13 @@ async def test_webhook_rejects_invalid_signature(sms_app):
 
 
 @pytest.mark.asyncio
-async def test_webhook_calls_llm_reply(sms_app):
-    """Webhook should call llm.reply and run_sms in background."""
-    mock_reply = AsyncMock(return_value="Bot reply")
-    mock_sms = AsyncMock(return_value="SMS sent")
+async def test_webhook_calls_gateway_handle(sms_app):
+    """Webhook should call gateway.handle with InboundMessage in background."""
+    app, adapter = sms_app
 
     mock_secrets = {"TWILIO_AUTH_TOKEN": "", "TWILIO_FROM_NUMBER": "", "TWILIO_ACCOUNT_SID": ""}
-    with patch("bot.gateway.sms.get_secrets", return_value=mock_secrets), \
-         patch("bot.llm.reply", mock_reply), \
-         patch("bot.tools.run_sms", mock_sms):
-
-        async with TestClient(TestServer(sms_app)) as client:
+    with patch("bot.channel.sms.get_secrets", return_value=mock_secrets):
+        async with TestClient(TestServer(app)) as client:
             resp = await client.post("/sms", data={
                 "From": "+14155551234",
                 "Body": "Hello bot",
@@ -131,23 +141,23 @@ async def test_webhook_calls_llm_reply(sms_app):
         # Wait for background task
         await asyncio.sleep(0.3)
 
-        mock_reply.assert_called_once()
-        call_args = mock_reply.call_args
-        assert call_args[0][0] == "sms:+14155551234"
+        adapter._gateway.handle.assert_called_once()
+        call_args = adapter._gateway.handle.call_args
+        inbound_msg = call_args[0][0]
+        assert inbound_msg.channel == "sms"
+        assert inbound_msg.session_key == "sms:+14155551234"
+        assert inbound_msg.text == "Hello bot"
+        assert inbound_msg.reply_ctx == {"phone_number": "+14155551234"}
 
 
 @pytest.mark.asyncio
 async def test_webhook_extracts_mms_images(sms_app):
-    """Webhook should extract MMS image URLs."""
-    mock_reply = AsyncMock(return_value="Got your image")
-    mock_sms = AsyncMock(return_value="SMS sent")
+    """Webhook should extract MMS image URLs and pass them in InboundMessage."""
+    app, adapter = sms_app
 
     mock_secrets = {"TWILIO_AUTH_TOKEN": "", "TWILIO_FROM_NUMBER": "", "TWILIO_ACCOUNT_SID": ""}
-    with patch("bot.gateway.sms.get_secrets", return_value=mock_secrets), \
-         patch("bot.llm.reply", mock_reply), \
-         patch("bot.tools.run_sms", mock_sms):
-
-        async with TestClient(TestServer(sms_app)) as client:
+    with patch("bot.channel.sms.get_secrets", return_value=mock_secrets):
+        async with TestClient(TestServer(app)) as client:
             resp = await client.post("/sms", data={
                 "From": "+14155551234",
                 "Body": "Check this photo",
@@ -159,9 +169,41 @@ async def test_webhook_extracts_mms_images(sms_app):
 
         await asyncio.sleep(0.3)
 
-        mock_reply.assert_called_once()
-        # The user_content should include the image
-        call_args = mock_reply.call_args
-        user_content = call_args[0][1]
-        # With images, build_user_content returns a list
-        assert isinstance(user_content, list)
+        adapter._gateway.handle.assert_called_once()
+        inbound_msg = adapter._gateway.handle.call_args[0][0]
+        assert inbound_msg.image_urls == ["https://api.twilio.com/image.jpg"]
+
+
+@pytest.mark.asyncio
+async def test_webhook_empty_body_uses_placeholder(sms_app):
+    """Empty SMS body should become '(empty message)' in InboundMessage.text."""
+    app, adapter = sms_app
+
+    mock_secrets = {"TWILIO_AUTH_TOKEN": "", "TWILIO_FROM_NUMBER": "", "TWILIO_ACCOUNT_SID": ""}
+    with patch("bot.channel.sms.get_secrets", return_value=mock_secrets):
+        async with TestClient(TestServer(app)) as client:
+            await client.post("/sms", data={
+                "From": "+14155551234",
+                "Body": "",
+                "NumMedia": "0",
+            })
+
+        await asyncio.sleep(0.3)
+
+        inbound_msg = adapter._gateway.handle.call_args[0][0]
+        assert inbound_msg.text == "(empty message)"
+
+
+# ── send() ───────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_send_calls_run_sms():
+    """send() should delegate to run_sms with correct args."""
+    adapter = SMSAdapter()
+    mock_run_sms = AsyncMock(return_value="SMS sent")
+
+    with patch("bot.tools.run_sms", mock_run_sms):
+        result = await adapter.send({"phone_number": "+14155551234"}, "Hello!")
+
+    mock_run_sms.assert_called_once_with(to="+14155551234", message="Hello!")
+    assert result == "SMS sent"

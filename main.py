@@ -66,7 +66,7 @@ async def main():
 
     if _voice_only:
         # Voice-only mode — skip Discord bots and other gateways
-        from bot.gateway.voice import start_voice_gateway
+        from bot.channel.voice import start_voice_gateway
         tasks.append(start_voice_gateway(agent=voice_agent))
         print(f"Voice-only mode (agent={voice_agent.name if voice_agent else 'default'})")
     elif _only_gateways is not None:
@@ -81,22 +81,23 @@ async def main():
             gw_names.append("feishu")
 
         if _gw_enabled("sms") and _gw_cfg.sms.enabled:
-            from bot.gateway.sms import start_sms_server
-            tasks.append(start_sms_server())
+            from bot.channel.sms import SMSAdapter
+            _sms_adapter = SMSAdapter()
+            tasks.append(_sms_adapter.run())
             gw_names.append("sms")
 
         if _gw_enabled("imessage") and _gw_cfg.imessage.enabled:
-            from bot.gateway.imessage import start_imessage_gateway
+            from bot.channel.imessage import start_imessage_gateway
             tasks.append(start_imessage_gateway())
             gw_names.append("imessage")
 
         if _gw_enabled("voice") and _gw_cfg.voice.enabled:
-            from bot.gateway.voice import start_voice_gateway
+            from bot.channel.voice import start_voice_gateway
             tasks.append(start_voice_gateway(agent=voice_agent))
             gw_names.append("voice")
 
         if _gw_enabled("api") and _gw_cfg.api.enabled:
-            from bot.gateway.api import start_api_server
+            from bot.channel.api import start_api_server
             tasks.append(start_api_server())
             gw_names.append("api")
 
@@ -112,7 +113,7 @@ async def main():
         _gw_cfg = get_config().gateway
 
         if _gw_cfg.api.enabled:
-            from bot.gateway.api import start_api_server, get_tracker
+            from bot.channel.api import start_api_server, get_tracker
             tracker = get_tracker()
             for agent in agents:
                 if agent.discord_token:
@@ -120,15 +121,16 @@ async def main():
             tasks.append(start_api_server())
 
         if _gw_cfg.sms.enabled:
-            from bot.gateway.sms import start_sms_server
-            tasks.append(start_sms_server())
+            from bot.channel.sms import SMSAdapter
+            _sms_adapter = SMSAdapter()
+            tasks.append(_sms_adapter.run())
 
         if _gw_cfg.imessage.enabled:
-            from bot.gateway.imessage import start_imessage_gateway
+            from bot.channel.imessage import start_imessage_gateway
             tasks.append(start_imessage_gateway())
 
         if _gw_cfg.voice.enabled:
-            from bot.gateway.voice import start_voice_gateway
+            from bot.channel.voice import start_voice_gateway
             tasks.append(start_voice_gateway(agent=voice_agent))
 
         if _gw_cfg.feishu.enabled:

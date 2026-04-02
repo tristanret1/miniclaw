@@ -400,7 +400,7 @@ def _get_gw() -> VoiceGateway:
 
 
 # ── Module-level attribute proxies (tests set these directly) ─────────────────
-# We shadow them here so that ``import bot.gateway.voice as vg; vg._active_until``
+# We shadow them here so that ``import bot.channel.voice as vg; vg._active_until``
 # works.  The wrappers always go through _get_gw() so they pick up the live value.
 
 _active_until: float = 0.0      # proxy — real state lives on _gateway

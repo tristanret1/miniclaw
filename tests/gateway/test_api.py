@@ -1,4 +1,4 @@
-"""Tests for bot.gateway.api — HTTP/WS API gateway."""
+"""Tests for bot.channel.api — HTTP/WS API gateway."""
 
 import json
 from unittest.mock import AsyncMock, patch, MagicMock
@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
-from bot.gateway.api import create_api_app, _ws_clients
+from bot.channel.api import create_api_app, _ws_clients
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +36,7 @@ async def api_client_with_key():
 @pytest.mark.asyncio
 async def test_get_agents(api_client):
     """GET /api/agents returns agent list."""
-    with patch("bot.gateway.api._tracker") as mock_tracker:
+    with patch("bot.channel.api._tracker") as mock_tracker:
         mock_tracker.get_all_statuses.return_value = {
             "bot1": {"status": "idle", "detail": "", "since": 0}
         }
@@ -79,7 +79,7 @@ async def test_api_key_auth_rejects_without_key(api_client_with_key):
 @pytest.mark.asyncio
 async def test_api_key_auth_accepts_correct_key(api_client_with_key):
     """When api_key is set, correct X-API-Key is accepted."""
-    with patch("bot.gateway.api._tracker") as mock_tracker:
+    with patch("bot.channel.api._tracker") as mock_tracker:
         mock_tracker.get_all_statuses.return_value = {}
         resp = await api_client_with_key.get(
             "/api/agents",
