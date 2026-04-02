@@ -31,10 +31,60 @@ if not env_path.exists() or not creds_path.exists():
     print()
 
 import asyncio
-from bot.config import get_config
-from bot.agent import load_agents_async
+from bot.config import get_config, PROJECT_ROOT
+from bot.agent import Agent, load_agents_async
 from bot.client import create_bot
 from bot.storage.session import SessionManager
+
+
+def _setup_gateway(agents: list[Agent], gw_cfg, only: set[str] | None = None):
+    """Create and configure the Gateway exchange with adapters + agents."""
+    from bot.gateway import Gateway, set_gateway
+
+    gateway = Gateway()
+
+    # Register all loaded agents
+    for agent in agents:
+        gateway.register_agent(agent.name, agent)
+
+    # Register feishu agent from workspace if not already in agents list
+    if gw_cfg.feishu.enabled and gw_cfg.feishu.agent:
+        agent_name = gw_cfg.feishu.agent
+        if agent_name not in {a.name for a in agents}:
+            ws = PROJECT_ROOT / f"workspace_{agent_name}"
+            ws.mkdir(parents=True, exist_ok=True)
+            feishu_agent = Agent(
+                name=agent_name,
+                discord_token="",
+                workspace_dir=ws,
+                model="claude-opus-4-6",
+            )
+            feishu_agent.session_mgr = SessionManager(db_path=feishu_agent.sessions_db)
+            gateway.register_agent(agent_name, feishu_agent)
+
+    # Default agent fallback
+    default_agent = next((a for a in agents if a.name == "default"), agents[0] if agents else None)
+    if default_agent and "default" not in {a.name for a in agents}:
+        gateway.register_agent("default", default_agent)
+
+    def _enabled(name: str) -> bool:
+        if only is not None:
+            return name in only
+        return True
+
+    # Register channel adapters
+    if _enabled("feishu") and gw_cfg.feishu.enabled:
+        from bot.channel.feishu import FeishuAdapter
+        gateway.register_adapter(FeishuAdapter())
+        gateway.set_channel_agent("feishu", gw_cfg.feishu.agent or "default")
+
+    if _enabled("sms") and gw_cfg.sms.enabled:
+        from bot.channel.sms import SMSAdapter
+        gateway.register_adapter(SMSAdapter())
+        gateway.set_channel_agent("sms", gw_cfg.sms.agent or "default")
+
+    set_gateway(gateway)
+    return gateway
 
 
 async def main():
@@ -54,63 +104,60 @@ async def main():
         agent.session_mgr = SessionManager(db_path=agent.sessions_db)
 
     tasks = []
-
-    # Find the voice agent (if any)
+    _gw_cfg = get_config().gateway
     voice_agent = next((a for a in agents if a.name == "voice"), None)
 
-    def _gw_enabled(name: str) -> bool:
-        """Check if a gateway should start (respects --gateway filter)."""
-        if _only_gateways is not None:
-            return name in _only_gateways
-        return True
-
     if _voice_only:
-        # Voice-only mode — skip Discord bots and other gateways
         from bot.channel.voice import start_voice_gateway
         tasks.append(start_voice_gateway(agent=voice_agent))
         print(f"Voice-only mode (agent={voice_agent.name if voice_agent else 'default'})")
     elif _only_gateways is not None:
-        # Gateway-only mode — skip Discord bots, start only specified gateways
-        _gw_cfg = get_config().gateway
-        gw_names = []
+        # Gateway-only mode — use Gateway exchange
+        gateway = _setup_gateway(agents, _gw_cfg, only=_only_gateways)
 
-        if _gw_enabled("feishu") and _gw_cfg.feishu.enabled:
-            from bot.channel.feishu import FeishuAdapter
-            _feishu_adapter = FeishuAdapter()
-            tasks.append(_feishu_adapter.run())
-            gw_names.append("feishu")
+        if gateway._adapters:
+            async def _run_gateway():
+                await gateway.start()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    await gateway.stop()
+            tasks.append(_run_gateway())
 
-        if _gw_enabled("sms") and _gw_cfg.sms.enabled:
-            from bot.channel.sms import SMSAdapter
-            _sms_adapter = SMSAdapter()
-            tasks.append(_sms_adapter.run())
-            gw_names.append("sms")
-
-        if _gw_enabled("imessage") and _gw_cfg.imessage.enabled:
+        # Non-adapter gateways (not yet migrated to adapter pattern)
+        if "imessage" in _only_gateways and _gw_cfg.imessage.enabled:
             from bot.channel.imessage import start_imessage_gateway
             tasks.append(start_imessage_gateway())
-            gw_names.append("imessage")
 
-        if _gw_enabled("voice") and _gw_cfg.voice.enabled:
+        if "voice" in _only_gateways and _gw_cfg.voice.enabled:
             from bot.channel.voice import start_voice_gateway
             tasks.append(start_voice_gateway(agent=voice_agent))
-            gw_names.append("voice")
 
-        if _gw_enabled("api") and _gw_cfg.api.enabled:
+        if "api" in _only_gateways and _gw_cfg.api.enabled:
             from bot.channel.api import start_api_server
             tasks.append(start_api_server())
-            gw_names.append("api")
 
-        print(f"Gateway-only mode: {', '.join(gw_names) or 'none matched'}")
+        adapter_names = list(gateway._adapters.keys())
+        other = [n for n in ["imessage", "voice", "api"] if n in _only_gateways]
+        print(f"Gateway-only mode: {', '.join(adapter_names + other) or 'none matched'}")
     else:
+        # Full mode — Discord bots + Gateway exchange + legacy gateways
         for agent in agents:
-            # Skip voice-only agents (no Discord token)
             if not agent.discord_token:
                 continue
             bot = create_bot(agent)
             tasks.append(bot.start(agent.discord_token))
 
-        _gw_cfg = get_config().gateway
+        gateway = _setup_gateway(agents, _gw_cfg)
+
+        if gateway._adapters:
+            async def _run_gateway():
+                await gateway.start()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    await gateway.stop()
+            tasks.append(_run_gateway())
 
         if _gw_cfg.api.enabled:
             from bot.channel.api import start_api_server, get_tracker
@@ -120,11 +167,6 @@ async def main():
                     tracker.on_online(agent.name)
             tasks.append(start_api_server())
 
-        if _gw_cfg.sms.enabled:
-            from bot.channel.sms import SMSAdapter
-            _sms_adapter = SMSAdapter()
-            tasks.append(_sms_adapter.run())
-
         if _gw_cfg.imessage.enabled:
             from bot.channel.imessage import start_imessage_gateway
             tasks.append(start_imessage_gateway())
@@ -133,17 +175,12 @@ async def main():
             from bot.channel.voice import start_voice_gateway
             tasks.append(start_voice_gateway(agent=voice_agent))
 
-        if _gw_cfg.feishu.enabled:
-            from bot.channel.feishu import FeishuAdapter
-            _feishu_adapter = FeishuAdapter()
-            tasks.append(_feishu_adapter.run())
-
-
     try:
         await asyncio.gather(*tasks)
     finally:
         from bot.acp import shutdown
         await shutdown()
+        from bot.storage import db
         await db.close_pool()
 
 
