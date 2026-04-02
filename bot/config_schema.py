@@ -281,21 +281,6 @@ class FeishuConfig:
 
 
 @dataclass
-class WhatsAppConfig:
-    enabled: bool = False
-    allow_from: list = field(default_factory=list)
-    session_db: str = "workspace/whatsapp_session.db"
-
-    @classmethod
-    def from_dict(cls, d: dict) -> WhatsAppConfig:
-        return cls(
-            enabled=_bool(d.get("enabled"), False),
-            allow_from=_list(d.get("allow_from"), []),
-            session_db=_str(d.get("session_db"), "workspace/whatsapp_session.db"),
-        )
-
-
-@dataclass
 class GatewayConfig:
     voice: VoiceConfig = field(default_factory=VoiceConfig)
     volcengine: VolcengineConfig = field(default_factory=VolcengineConfig)
@@ -304,7 +289,6 @@ class GatewayConfig:
     heartbeat: HeartbeatConfig = field(default_factory=HeartbeatConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
     feishu: FeishuConfig = field(default_factory=FeishuConfig)
-    whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig)
 
     @classmethod
     def from_dict(cls, d: dict) -> GatewayConfig:
@@ -316,7 +300,6 @@ class GatewayConfig:
             heartbeat=HeartbeatConfig.from_dict(d.get("heartbeat") or {}),
             api=ApiConfig.from_dict(d.get("api") or {}),
             feishu=FeishuConfig.from_dict(d.get("feishu") or {}),
-            whatsapp=WhatsAppConfig.from_dict(d.get("whatsapp") or {}),
         )
 
 

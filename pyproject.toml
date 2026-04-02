@@ -21,7 +21,6 @@ dependencies = [
     "uvicorn[standard]>=0.34",
     "lark-oapi>=1.5.3",
     "croniter>=1.0",
-    "neonize>=0.3",
 ]
 
 [project.optional-dependencies]
