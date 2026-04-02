@@ -43,6 +43,7 @@ gateway:
     tts_speaker: "zh_male_beijingxiaoye_emo_v2_mars_bigtts"
   sms:
     enabled: false
+    agent: default
     webhook_port: 8080
     webhook_url: ""
   imessage:
@@ -67,6 +68,7 @@ gateway:
     api_key: ""
   feishu:
     enabled: true
+    agent: feishu
     allow_from: []
 
 storage:

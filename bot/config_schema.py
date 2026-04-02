@@ -194,6 +194,7 @@ class VolcengineConfig:
 @dataclass
 class SMSConfig:
     enabled: bool = False
+    agent: str = ""
     webhook_port: int = 8080
     webhook_url: str = ""
 
@@ -201,6 +202,7 @@ class SMSConfig:
     def from_dict(cls, d: dict) -> SMSConfig:
         return cls(
             enabled=_bool(d.get("enabled"), False),
+            agent=_str(d.get("agent"), ""),
             webhook_port=_int(d.get("webhook_port"), 8080),
             webhook_url=_str(d.get("webhook_url"), ""),
         )
@@ -270,12 +272,14 @@ class ApiConfig:
 @dataclass
 class FeishuConfig:
     enabled: bool = False
+    agent: str = ""
     allow_from: list = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, d: dict) -> FeishuConfig:
         return cls(
             enabled=_bool(d.get("enabled"), False),
+            agent=_str(d.get("agent"), ""),
             allow_from=_list(d.get("allow_from"), []),
         )
 
