@@ -177,8 +177,9 @@ async def main():
                 continue
             from bot.channel.discord import DiscordAdapter
             discord_adapter = DiscordAdapter(agent)
-            await discord_adapter.start(gateway)
+            gateway.register_adapter(discord_adapter)
             gateway.set_channel_agent("discord", agent.name)
+            await discord_adapter.start(gateway)
             tasks.append(discord_adapter.run(agent.discord_token))
 
         if gateway._adapters:
