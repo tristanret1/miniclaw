@@ -71,7 +71,11 @@ class Gateway:
 
         content = build_user_content(msg.text, msg.image_urls or None)
 
-        if adapter.supports_streaming:
+        # Only use streaming when the adapter is also the source (real-time chat).
+        # Cross-channel delivery (cron/heartbeat → discord) always uses non-streaming.
+        use_streaming = adapter.supports_streaming and not msg.delivery_channel
+
+        if use_streaming:
             async for chunk in llm.stream(msg.session_key, content, agent=agent):
                 await adapter.send_chunk(msg.reply_ctx, chunk, done=False)
             await adapter.send_chunk(msg.reply_ctx, "", done=True)
