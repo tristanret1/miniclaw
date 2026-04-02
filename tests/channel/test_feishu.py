@@ -37,30 +37,30 @@ class TestFeishuSessionKey:
 
 class TestFeishuMessageParsing:
     def test_parse_text_content(self):
-        from bot.gateway.feishu import _parse_text_content
+        from bot.channel.feishu import _parse_text_content
         assert _parse_text_content('{"text":"hello world"}') == "hello world"
 
     def test_parse_text_content_empty(self):
-        from bot.gateway.feishu import _parse_text_content
+        from bot.channel.feishu import _parse_text_content
         assert _parse_text_content('{"text":""}') == ""
 
     def test_parse_text_content_invalid_json(self):
-        from bot.gateway.feishu import _parse_text_content
+        from bot.channel.feishu import _parse_text_content
         assert _parse_text_content("not json") == "not json"
 
     def test_strip_bot_mention(self):
-        from bot.gateway.feishu import _strip_bot_mention
+        from bot.channel.feishu import _strip_bot_mention
         text = "@_user_1 hello"
         mentions = [MagicMock(key="@_user_1", id=MagicMock(open_id="ou_bot123"))]
         result = _strip_bot_mention(text, mentions, "ou_bot123")
         assert result == "hello"
 
     def test_strip_bot_mention_no_mentions(self):
-        from bot.gateway.feishu import _strip_bot_mention
+        from bot.channel.feishu import _strip_bot_mention
         assert _strip_bot_mention("hello", None, "ou_bot") == "hello"
 
     def test_strip_bot_mention_keeps_user_mentions(self):
-        from bot.gateway.feishu import _strip_bot_mention
+        from bot.channel.feishu import _strip_bot_mention
         text = "@_user_1 @_user_2 hello"
         mentions = [
             MagicMock(key="@_user_1", id=MagicMock(open_id="ou_bot")),
@@ -73,8 +73,43 @@ class TestFeishuMessageParsing:
 
 class TestFeishuSend:
     async def test_send_no_client(self):
-        from bot.gateway.feishu import send_feishu_message
-        import bot.gateway.feishu as mod
-        mod._api_client = None
-        result = await send_feishu_message("oc_123", "hello")
+        from bot.channel.feishu import FeishuAdapter
+        adapter = FeishuAdapter()
+        adapter._api_client = None
+        result = await adapter.send({"message_id": None, "chat_id": "oc_123"}, "hello")
+        assert "Error" in result
+
+    async def test_send_prefers_reply_over_send(self):
+        from bot.channel.feishu import FeishuAdapter
+        adapter = FeishuAdapter()
+
+        reply_mock = AsyncMock(return_value="ok")
+        send_mock = AsyncMock(return_value="ok")
+        adapter._reply = reply_mock
+        adapter._send = send_mock
+
+        result = await adapter.send(
+            {"message_id": "om_abc", "chat_id": "oc_123"}, "hello"
+        )
+        assert result == "ok"
+        reply_mock.assert_called_once_with("om_abc", "hello")
+        send_mock.assert_not_called()
+
+    async def test_send_falls_back_to_chat_when_reply_fails(self):
+        from bot.channel.feishu import FeishuAdapter
+        adapter = FeishuAdapter()
+
+        adapter._reply = AsyncMock(return_value="Feishu reply failed: code=400")
+        adapter._send = AsyncMock(return_value="ok")
+
+        result = await adapter.send(
+            {"message_id": "om_abc", "chat_id": "oc_123"}, "hello"
+        )
+        assert result == "ok"
+        adapter._send.assert_called_once_with("oc_123", "hello")
+
+    async def test_send_no_ctx(self):
+        from bot.channel.feishu import FeishuAdapter
+        adapter = FeishuAdapter()
+        result = await adapter.send({}, "hello")
         assert "Error" in result

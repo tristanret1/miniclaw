@@ -75,8 +75,9 @@ async def main():
         gw_names = []
 
         if _gw_enabled("feishu") and _gw_cfg.feishu.enabled:
-            from bot.gateway.feishu import start_feishu_gateway
-            tasks.append(start_feishu_gateway())
+            from bot.channel.feishu import FeishuAdapter
+            _feishu_adapter = FeishuAdapter()
+            tasks.append(_feishu_adapter.run())
             gw_names.append("feishu")
 
         if _gw_enabled("sms") and _gw_cfg.sms.enabled:
@@ -131,8 +132,9 @@ async def main():
             tasks.append(start_voice_gateway(agent=voice_agent))
 
         if _gw_cfg.feishu.enabled:
-            from bot.gateway.feishu import start_feishu_gateway
-            tasks.append(start_feishu_gateway())
+            from bot.channel.feishu import FeishuAdapter
+            _feishu_adapter = FeishuAdapter()
+            tasks.append(_feishu_adapter.run())
 
 
     try:

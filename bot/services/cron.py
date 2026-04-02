@@ -402,7 +402,7 @@ class CronScheduler:
                         raise
                 elif job.delivery_channel == "feishu":
                     try:
-                        from bot.gateway.feishu import send_feishu_message
+                        from bot.channel.feishu import send_feishu_message
                         result = await send_feishu_message(chat_id=job.channel_id, message=reply)
                         log.info("job %s delivered via Feishu to %s: %s", job.name, job.channel_id, result)
                     except Exception as e:
