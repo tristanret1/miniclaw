@@ -33,7 +33,6 @@ if not env_path.exists() or not creds_path.exists():
 import asyncio
 from bot.config import get_config, PROJECT_ROOT
 from bot.agent import Agent, load_agents_async
-from bot.client import create_bot
 from bot.storage.session import SessionManager
 
 
@@ -107,6 +106,14 @@ async def main():
     _gw_cfg = get_config().gateway
     voice_agent = next((a for a in agents if a.name == "voice"), None)
 
+    # Start cron scheduler (independent of any channel)
+    _cfg = get_config()
+    if _cfg.services.cron.enabled:
+        from bot.services.cron import get_scheduler
+        scheduler = get_scheduler()
+        await scheduler.start(None)  # no bot reference needed — delivers through gateway
+        print("Cron scheduler started")
+
     if _voice_only:
         from bot.channel.voice import start_voice_gateway
         tasks.append(start_voice_gateway(agent=voice_agent))
@@ -142,13 +149,17 @@ async def main():
         print(f"Gateway-only mode: {', '.join(adapter_names + other) or 'none matched'}")
     else:
         # Full mode — Discord bots + Gateway exchange + legacy gateways
+        gateway = _setup_gateway(agents, _gw_cfg)
+
+        # Register Discord adapters for each agent with a token
         for agent in agents:
             if not agent.discord_token:
                 continue
-            bot = create_bot(agent)
-            tasks.append(bot.start(agent.discord_token))
-
-        gateway = _setup_gateway(agents, _gw_cfg)
+            from bot.channel.discord import DiscordAdapter
+            discord_adapter = DiscordAdapter(agent)
+            await discord_adapter.start(gateway)
+            gateway.set_channel_agent("discord", agent.name)
+            tasks.append(discord_adapter.run(agent.discord_token))
 
         if gateway._adapters:
             async def _run_gateway():

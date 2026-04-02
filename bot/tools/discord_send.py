@@ -35,7 +35,10 @@ DISCORD_SEND_TOOL = {
 
 async def run_discord_send(channel_id: str, message: str, ephemeral: bool = False) -> str:
     """Send a message to a Discord channel using the bot client."""
-    from bot.client import bot  # lazy import to avoid circular dependency
+    from bot.gateway import get_gateway
+    gw = get_gateway()
+    adapter = gw.get_adapter("discord") if gw else None
+    bot = adapter._bot if adapter else None
 
     log.info("discord_send → channel=%s len=%d ephemeral=%s", channel_id, len(message), ephemeral)
 
