@@ -73,13 +73,11 @@ class DiscordAdapter(ChannelAdapter):
             if message:
                 for i in range(0, len(text), 2000):
                     await message.reply(text[i : i + 2000])
-            elif target_id and self._bot and self._bot.is_ready():
+            elif target_id and self._bot:
                 channel = self._bot.get_channel(int(target_id))
                 if channel is None:
                     channel = await self._bot.fetch_channel(int(target_id))
                 await send_chunks(channel, text)
-            elif target_id and self._bot and not self._bot.is_ready():
-                return "Error: Discord bot not ready yet"
             else:
                 return "Error: no message or target_id in reply_ctx"
             return "ok"

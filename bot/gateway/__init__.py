@@ -28,13 +28,13 @@ class Gateway:
     """Central exchange: receives InboundMessage, routes to LLM, delivers reply."""
 
     def __init__(self):
-        self._adapters: dict[str, ChannelAdapter] = {}
+        self._adapters: dict[str, list[ChannelAdapter]] = {}  # channel_name → [adapters]
         self._agents: dict[str, object] = {}       # agent_name → Agent
         self._channel_agent: dict[str, str] = {}    # channel_name → agent_name
 
     def register_adapter(self, adapter: ChannelAdapter) -> None:
-        """Register a channel adapter."""
-        self._adapters[adapter.name] = adapter
+        """Register a channel adapter. Multiple adapters per channel are supported."""
+        self._adapters.setdefault(adapter.name, []).append(adapter)
 
     def register_agent(self, name: str, agent) -> None:
         """Register an agent by name."""
@@ -45,8 +45,18 @@ class Gateway:
         self._channel_agent[channel] = agent_name
 
     def get_adapter(self, name: str) -> ChannelAdapter | None:
-        """Get adapter by name."""
-        return self._adapters.get(name)
+        """Get first adapter by channel name."""
+        adapters = self._adapters.get(name, [])
+        return adapters[0] if adapters else None
+
+    def _get_ready_adapter(self, name: str) -> ChannelAdapter | None:
+        """Get first ready adapter for a channel. For Discord, checks bot.is_ready()."""
+        for adapter in self._adapters.get(name, []):
+            bot = getattr(adapter, "_bot", None)
+            if bot and hasattr(bot, "is_ready") and not bot.is_ready():
+                continue
+            return adapter
+        return None
 
     def get_agent(self, channel: str):
         """Resolve the agent for a channel."""
@@ -65,7 +75,7 @@ class Gateway:
 
         # Determine which adapter delivers the reply
         delivery = msg.delivery_channel or msg.channel
-        adapter = self._adapters.get(delivery)
+        adapter = self._get_ready_adapter(delivery)
         if not adapter:
             log.error("no adapter for delivery channel=%s (source=%s)", delivery, msg.channel)
             return
@@ -96,20 +106,24 @@ class Gateway:
                 log.warning("handle: empty reply for session=%s", msg.session_key)
 
     async def deliver(self, channel: str, reply_ctx: dict, text: str) -> str:
-        """Deliver a message through a specific channel adapter. Used by cron."""
-        adapter = self._adapters.get(channel)
+        """Deliver a message through a specific channel adapter. Used by cron/heartbeat."""
+        adapter = self._get_ready_adapter(channel)
         if not adapter:
-            return f"Error: no adapter for channel '{channel}'"
+            return f"Error: no ready adapter for channel '{channel}'"
         return await adapter.send(reply_ctx, text)
 
     async def start(self) -> None:
         """Start all registered adapters."""
-        for adapter in self._adapters.values():
-            await adapter.start(self)
-        log.info("gateway started with %d adapter(s): %s",
-                 len(self._adapters), ", ".join(self._adapters.keys()))
+        total = 0
+        for adapters in self._adapters.values():
+            for adapter in adapters:
+                await adapter.start(self)
+                total += 1
+        log.info("gateway started with %d adapter(s) across %s",
+                 total, ", ".join(f"{k}({len(v)})" for k, v in self._adapters.items()))
 
     async def stop(self) -> None:
         """Stop all adapters."""
-        for adapter in self._adapters.values():
-            await adapter.stop()
+        for adapters in self._adapters.values():
+            for adapter in adapters:
+                await adapter.stop()
