@@ -1,7 +1,25 @@
 """WhatsApp gateway — neonize (whatsmeow bindings) WebSocket long connection."""
 
 import asyncio
+import ctypes.util
+import platform
 from pathlib import Path
+
+# Pre-load libmagic before neonize imports python-magic.
+# python-magic requires the libmagic C library, which may not be on the default
+# search path (e.g. homebrew on macOS). We find and load it explicitly.
+if not ctypes.util.find_library("magic"):
+    _lib_name = "libmagic.dylib" if platform.system() == "Darwin" else "libmagic.so.1"
+    _search = (
+        ["/opt/homebrew/lib", "/usr/local/lib", str(Path.home() / "homebrew/lib")]
+        if platform.system() == "Darwin"
+        else ["/usr/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu", "/usr/lib"]
+    )
+    for _p in _search:
+        _so = Path(_p) / _lib_name
+        if _so.exists():
+            ctypes.cdll.LoadLibrary(str(_so))
+            break
 
 from bot.config import get_config, PROJECT_ROOT
 from bot.logger import get_logger
