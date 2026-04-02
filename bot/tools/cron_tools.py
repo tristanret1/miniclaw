@@ -53,6 +53,10 @@ CRON_CREATE_TOOL = {
                 "enum": ["discord", "sms", "imessage", "feishu"],
                 "description": "Delivery channel: 'discord' (default) sends to Discord channel_id, 'sms' sends SMS via Twilio, 'imessage' sends via iMessage, 'feishu' sends to Feishu chat. For sms/imessage, channel_id should be E.164 phone number or Apple ID. For feishu, use chat_id (oc_xxx).",
             },
+            "agent": {
+                "type": "string",
+                "description": "Agent name for delivery routing (use the agent name from message metadata). Required for Discord delivery to route to the correct bot.",
+            },
         },
         "required": ["name", "schedule_type", "schedule_value", "payload", "channel_id"],
     },

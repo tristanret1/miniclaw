@@ -49,13 +49,31 @@ class Gateway:
         adapters = self._adapters.get(name, [])
         return adapters[0] if adapters else None
 
-    def _get_ready_adapter(self, name: str) -> ChannelAdapter | None:
-        """Get first ready adapter for a channel. For Discord, checks bot.is_ready()."""
-        for adapter in self._adapters.get(name, []):
+    def _get_ready_adapter(self, name: str, agent_name: str = "") -> ChannelAdapter | None:
+        """Get a ready adapter for a channel.
+
+        If agent_name is given, prefer the adapter bound to that agent.
+        Otherwise return the first ready one.
+        """
+        adapters = self._adapters.get(name, [])
+
+        def _is_ready(adapter: ChannelAdapter) -> bool:
             bot = getattr(adapter, "_bot", None)
-            if bot and hasattr(bot, "is_ready") and not bot.is_ready():
-                continue
-            return adapter
+            if bot and hasattr(bot, "is_ready"):
+                return bot.is_ready()
+            return True
+
+        # Try matching agent first
+        if agent_name:
+            for adapter in adapters:
+                a = getattr(adapter, "_agent", None)
+                if a and getattr(a, "name", "") == agent_name and _is_ready(adapter):
+                    return adapter
+
+        # Fallback: first ready adapter
+        for adapter in adapters:
+            if _is_ready(adapter):
+                return adapter
         return None
 
     def get_agent(self, channel: str):
@@ -75,7 +93,7 @@ class Gateway:
 
         # Determine which adapter delivers the reply
         delivery = msg.delivery_channel or msg.channel
-        adapter = self._get_ready_adapter(delivery)
+        adapter = self._get_ready_adapter(delivery, msg.reply_ctx.get("agent", ""))
         if not adapter:
             log.error("no adapter for delivery channel=%s (source=%s)", delivery, msg.channel)
             return
@@ -107,7 +125,7 @@ class Gateway:
 
     async def deliver(self, channel: str, reply_ctx: dict, text: str) -> str:
         """Deliver a message through a specific channel adapter. Used by cron/heartbeat."""
-        adapter = self._get_ready_adapter(channel)
+        adapter = self._get_ready_adapter(channel, reply_ctx.get("agent", ""))
         if not adapter:
             return f"Error: no ready adapter for channel '{channel}'"
         return await adapter.send(reply_ctx, text)

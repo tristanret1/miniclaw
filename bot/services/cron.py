@@ -373,12 +373,17 @@ class CronScheduler:
                 log.error("job %s: gateway not available", job.name)
                 return ""
 
+            # Extract delivery agent from context (embedded by cron_create tool)
+            import re
+            agent_match = re.search(r"delivery_agent:(\S+)", job.context or "")
+            delivery_agent = agent_match.group(1) if agent_match else ""
+
             msg = InboundMessage(
                 channel="cron",
                 session_key=session_key,
                 text=job.payload,
                 delivery_channel=job.delivery_channel,
-                reply_ctx={"target_id": job.channel_id},
+                reply_ctx={"target_id": job.channel_id, "agent": delivery_agent},
             )
             await gw.handle(msg)
 

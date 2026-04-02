@@ -223,7 +223,7 @@ class DiscordAdapter(ChannelAdapter):
         local_time = message.created_at.astimezone(tz)
         timestamp = local_time.strftime("%Y-%m-%d %H:%M %Z")
         channel_name = getattr(message.channel, "name", "DM")
-        meta = f"[{message.author.display_name} (ID:{message.author.id}) · #{channel_name} (channel_id:{message.channel.id}) · {timestamp}]\n"
+        meta = f"[{message.author.display_name} (ID:{message.author.id}) · #{channel_name} (channel_id:{message.channel.id}) · agent:{self._agent.name} · {timestamp}]\n"
         content = meta + content
 
         msg = InboundMessage(

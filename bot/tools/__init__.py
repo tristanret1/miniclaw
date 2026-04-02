@@ -76,6 +76,11 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None,
         )
     if tool_name == "cron_create":
         from bot.services import cron
+        # Embed agent name in context for delivery routing
+        context = tool_input.get("context", "")
+        agent_tag = tool_input.get("agent", "")
+        if agent_tag:
+            context = f"delivery_agent:{agent_tag}\n{context}" if context else f"delivery_agent:{agent_tag}"
         return await cron.create_job(
             name=tool_input["name"],
             schedule_type=tool_input["schedule_type"],
@@ -84,7 +89,7 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None,
             channel_id=tool_input["channel_id"],
             timezone=tool_input.get("timezone", ""),
             session_mode=tool_input.get("session_mode", "isolated"),
-            context=tool_input.get("context", ""),
+            context=context,
             model=tool_input.get("model", ""),
             delivery_channel=tool_input.get("delivery_channel", "discord"),
         )
