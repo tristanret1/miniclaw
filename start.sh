@@ -1,79 +1,65 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PORT="${SMS_WEBHOOK_PORT:-8080}"
-TUNNEL_PID=""
-BOT_PID=""
+PIDS=()
 
 cleanup() {
     echo "Shutting down..."
-    [ -n "$TUNNEL_PID" ] && kill "$TUNNEL_PID" 2>/dev/null || true
-    [ -n "$BOT_PID" ] && kill "$BOT_PID" 2>/dev/null || true
+    for pid in "${PIDS[@]}"; do
+        kill "$pid" 2>/dev/null || true
+    done
     wait 2>/dev/null
 }
 trap cleanup EXIT INT TERM
 
-# ── Detect tunnel tool ───────────────────────────────────────────────────────
-TUNNEL_URL=""
-
-if command -v ngrok &>/dev/null; then
-    # ngrok: start tunnel, query API for public URL
-    ngrok http "$PORT" --log=stdout --log-level=warn &
-    TUNNEL_PID=$!
-    sleep 3
-    TUNNEL_URL=$(curl -s http://localhost:4040/api/tunnels 2>/dev/null \
-        | python3 -c "import sys,json; ts=json.load(sys.stdin)['tunnels']; print(next(t['public_url'] for t in ts if t['public_url'].startswith('https')))" 2>/dev/null || true)
-
-elif command -v cloudflared &>/dev/null; then
-    # cloudflared: start quick tunnel, query metrics endpoint
-    cloudflared tunnel --url "http://localhost:$PORT" &
-    TUNNEL_PID=$!
-    sleep 3
-    CF_HOST=$(curl -s "http://localhost:$((PORT + 1))/quicktunnel" 2>/dev/null \
-        | python3 -c "import sys,json; print(json.load(sys.stdin)['hostname'])" 2>/dev/null || true)
-    [ -n "$CF_HOST" ] && TUNNEL_URL="https://$CF_HOST"
-
-else
-    echo "Warning: neither ngrok nor cloudflared found — no tunnel started"
+# ── Resolve gateway mode ─────────────────────────────────────────────────────
+GATEWAYS="${MINICLAW_GATEWAY:-}"
+GATEWAY_FLAG=""
+if [ -n "$GATEWAYS" ]; then
+    GATEWAY_FLAG="--gateway $GATEWAYS"
+    echo "Gateway mode: $GATEWAYS"
 fi
 
-# ── Update .env with tunnel URL ──────────────────────────────────────────────
-if [ -n "$TUNNEL_URL" ]; then
-    FULL_URL="${TUNNEL_URL}/sms"
-    echo "Tunnel URL: $FULL_URL"
+# ── SMS tunnel (only when sms gateway is active) ─────────────────────────────
+needs_sms_tunnel() {
+    # No gateway filter = full mode, check config
+    [ -z "$GATEWAYS" ] && return 0
+    # Explicit gateway list: check if sms is in it
+    echo "$GATEWAYS" | grep -qw "sms"
+}
 
-    # sed -i behaves differently on macOS vs Linux
-    if [[ "$(uname)" == "Darwin" ]]; then
-        SED_INPLACE=(sed -i '')
-    else
-        SED_INPLACE=(sed -i)
-    fi
+if needs_sms_tunnel; then
+    PORT="${SMS_WEBHOOK_PORT:-8080}"
 
-    if grep -q "^SMS_WEBHOOK_URL=" .env 2>/dev/null; then
-        "${SED_INPLACE[@]}" "s|^SMS_WEBHOOK_URL=.*|SMS_WEBHOOK_URL=$FULL_URL|" .env
+    if command -v ngrok &>/dev/null; then
+        ngrok http "$PORT" --log=stdout --log-level=warn &
+        PIDS+=($!)
+        sleep 3
+        TUNNEL_URL=$(curl -s http://localhost:4040/api/tunnels 2>/dev/null \
+            | python3 -c "import sys,json; ts=json.load(sys.stdin)['tunnels']; print(next(t['public_url'] for t in ts if t['public_url'].startswith('https')))" 2>/dev/null || true)
+
+        if [ -n "$TUNNEL_URL" ]; then
+            FULL_URL="${TUNNEL_URL}/sms"
+            echo "SMS tunnel: $FULL_URL"
+
+            if [[ "$(uname)" == "Darwin" ]]; then
+                sed -i '' "s|^SMS_WEBHOOK_URL=.*|SMS_WEBHOOK_URL=$FULL_URL|" .env 2>/dev/null || echo "SMS_WEBHOOK_URL=$FULL_URL" >> .env
+            else
+                sed -i "s|^SMS_WEBHOOK_URL=.*|SMS_WEBHOOK_URL=$FULL_URL|" .env 2>/dev/null || echo "SMS_WEBHOOK_URL=$FULL_URL" >> .env
+            fi
+        else
+            echo "Warning: ngrok started but could not detect tunnel URL"
+        fi
     else
-        echo "SMS_WEBHOOK_URL=$FULL_URL" >> .env
+        echo "Warning: SMS enabled but ngrok not found — no tunnel"
     fi
-    echo "Updated .env with SMS_WEBHOOK_URL=$FULL_URL"
-    echo "Remember to update Twilio Console webhook to: $FULL_URL"
-else
-    echo "Warning: could not detect tunnel URL"
 fi
 
 # ── Start bot ────────────────────────────────────────────────────────────────
-# Pass MINICLAW_GATEWAY env var as --gateway flag if set
-GATEWAY_FLAG=""
-if [ -n "${MINICLAW_GATEWAY:-}" ]; then
-    GATEWAY_FLAG="--gateway $MINICLAW_GATEWAY"
-    echo "Starting with gateways: $MINICLAW_GATEWAY"
-fi
+PYTHON="python"
+[ -x "venv/bin/python" ] && PYTHON="venv/bin/python"
 
-# Use venv python if available (production), otherwise bare python
-if [ -x "venv/bin/python" ]; then
-    venv/bin/python main.py $GATEWAY_FLAG &
-else
-    python main.py $GATEWAY_FLAG &
-fi
-BOT_PID=$!
+$PYTHON main.py $GATEWAY_FLAG &
+PIDS+=($!)
 
-wait $BOT_PID
+wait "${PIDS[-1]}"
