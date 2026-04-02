@@ -35,6 +35,9 @@ class Gateway:
     def register_adapter(self, adapter: ChannelAdapter) -> None:
         """Register a channel adapter. Multiple adapters per channel are supported."""
         self._adapters.setdefault(adapter.name, []).append(adapter)
+        agent_name = getattr(getattr(adapter, "_agent", None), "name", "?")
+        log.info("registered adapter: %s (agent=%s, total=%d for channel)",
+                 adapter.name, agent_name, len(self._adapters[adapter.name]))
 
     def register_agent(self, name: str, agent) -> None:
         """Register an agent by name."""

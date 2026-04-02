@@ -51,6 +51,8 @@ class DiscordAdapter(ChannelAdapter):
 
     async def start(self, gateway) -> None:
         self._gateway = gateway
+        if self._bot is not None:
+            return  # already initialized
         intents = discord.Intents.default()
         intents.message_content = True
         self._bot = discord.Client(intents=intents)
