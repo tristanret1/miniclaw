@@ -17,6 +17,7 @@ from bot.tools.imessage_tools import IMESSAGE_SEND_TOOL
 from bot.tools.memory_tools import MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL
 from bot.tools.sms import PHONE_CALL_TOOL, SMS_TOOL, run_phone_call, run_sms
 from bot.tools.voice_tools import VOICE_ANNOUNCE_TOOL
+from bot.tools.browser import BROWSER_TOOL
 
 log = get_logger("tools")
 
@@ -25,7 +26,7 @@ DEFAULT_TIMEOUT = EXEC_DEFAULT_TIMEOUT
 ALL_TOOLS = [
     EXEC_TOOL, MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL, CLAUDE_CODE_TOOL,
     CRON_CREATE_TOOL, CRON_LIST_TOOL, CRON_DELETE_TOOL, PHONE_CALL_TOOL, SMS_TOOL,
-    IMESSAGE_SEND_TOOL,
+    IMESSAGE_SEND_TOOL, BROWSER_TOOL,
 ]  # DISCORD_SEND_TOOL
 
 _cfg = get_config()
@@ -168,5 +169,28 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None,
             target_weight=tool_input["target_weight"],
             target_date=tool_input["target_date"],
         )
+    if tool_name == "browser":
+        from bot.tools.browser import run_browser
+        action = tool_input.get("action", "")
+        kwargs = {k: v for k, v in tool_input.items() if k != "action"}
+        result = await run_browser(action, **kwargs)
+        if isinstance(result, dict) and result.get("screenshot_base64"):
+            # Return screenshot as image content for Claude's vision
+            screenshot_b64 = result.pop("screenshot_base64")
+            text_info = ", ".join(f"{k}={v}" for k, v in result.items() if v)
+            return [
+                {"type": "text", "text": text_info},
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": screenshot_b64,
+                    },
+                },
+            ]
+        if isinstance(result, dict):
+            return "\n".join(f"{k}: {v}" for k, v in result.items() if v)
+        return result
     log.warning("unknown tool called: %s", tool_name)
     return f"Unknown tool: {tool_name}"

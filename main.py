@@ -106,6 +106,15 @@ async def main():
     _gw_cfg = get_config().gateway
     voice_agent = next((a for a in agents if a.name == "voice"), None)
 
+    # Start browser display server (Xvfb + VNC + noVNC — Linux only)
+    try:
+        from bot.tools.browser_server import start_browser_server
+        vnc_url = await start_browser_server()
+        if vnc_url:
+            print(f"Browser VNC: {vnc_url}")
+    except Exception as e:
+        log.warning("browser server failed to start: %s", e)
+
     # Start cron scheduler (independent of any channel)
     _cfg = get_config()
     if _cfg.services.cron.enabled:
@@ -212,6 +221,13 @@ async def main():
     finally:
         from bot.acp import shutdown
         await shutdown()
+        try:
+            from bot.tools.browser import close_browser
+            from bot.tools.browser_server import stop_browser_server
+            await close_browser()
+            stop_browser_server()
+        except Exception:
+            pass
         from bot.storage import db
         await db.close_pool()
 
