@@ -91,7 +91,11 @@ class Gateway:
         adapter instead of the source channel. This supports cron/heartbeat
         where the source is virtual but delivery goes to a real channel.
         """
-        agent = self.get_agent(msg.channel)
+        # Resolve agent: explicit override > channel mapping > default
+        if msg.agent_override:
+            agent = self._agents.get(msg.agent_override)
+        else:
+            agent = self.get_agent(msg.channel)
         agent_name = getattr(agent, "name", "default") if agent else "default"
 
         # Determine which adapter delivers the reply

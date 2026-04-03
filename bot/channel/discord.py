@@ -234,6 +234,7 @@ class DiscordAdapter(ChannelAdapter):
             text=content,
             image_urls=image_urls,
             reply_ctx={"message": message},
+            agent_override=self._agent.name,
         )
 
         from bot import hooks

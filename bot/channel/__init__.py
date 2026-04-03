@@ -13,6 +13,7 @@ class InboundMessage:
     image_urls: list[str] = field(default_factory=list)
     reply_ctx: dict = field(default_factory=dict)
     delivery_channel: str = ""  # if set, reply goes to this adapter instead of source channel
+    agent_override: str = ""   # if set, use this agent instead of channel→agent mapping
 
 
 class ChannelAdapter(ABC):
