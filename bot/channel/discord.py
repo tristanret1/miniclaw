@@ -63,28 +63,29 @@ class DiscordAdapter(ChannelAdapter):
             await self._bot.close()
 
     async def send(self, reply_ctx: dict, text: str) -> str:
-        """Send a complete reply to Discord.
-
-        Supports two modes:
-        - reply_ctx["message"]: reply to a specific message (normal chat)
-        - reply_ctx["target_id"]: send to a channel by ID (cron/heartbeat delivery)
-        """
+        """Send a complete reply to Discord."""
         message: discord.Message | None = reply_ctx.get("message")
         target_id: str | None = reply_ctx.get("target_id")
         try:
             if message:
+                log.info("discord → reply agent=%s channel=%s len=%d",
+                         self._agent.name, getattr(message.channel, "id", "?"), len(text))
                 for i in range(0, len(text), 2000):
                     await message.reply(text[i : i + 2000])
             elif target_id and self._bot:
+                log.info("discord → send agent=%s target=%s len=%d ready=%s",
+                         self._agent.name, target_id, len(text), self._bot.is_ready())
                 channel = self._bot.get_channel(int(target_id))
                 if channel is None:
                     channel = await self._bot.fetch_channel(int(target_id))
                 await send_chunks(channel, text)
             else:
+                log.warning("discord send: no message or target_id, reply_ctx_keys=%s",
+                            list(reply_ctx.keys()))
                 return "Error: no message or target_id in reply_ctx"
             return "ok"
         except Exception as e:
-            log.error("discord send error: %s", e)
+            log.error("discord send error: agent=%s err=%s", self._agent.name, e)
             return f"Error: {e}"
 
     async def send_chunk(self, reply_ctx: dict, chunk: str, done: bool) -> None:
@@ -146,7 +147,8 @@ class DiscordAdapter(ChannelAdapter):
 
         @bot.event
         async def on_ready():
-            print(f"Agent '{agent.name}' online as {bot.user}")
+            log.info("discord bot ready: agent=%s user=%s guilds=%d",
+                     agent.name, bot.user, len(bot.guilds))
 
         @bot.event
         async def on_message(message: discord.Message):
@@ -228,9 +230,14 @@ class DiscordAdapter(ChannelAdapter):
         meta = f"[{message.author.display_name} (ID:{message.author.id}) · #{channel_name} (channel_id:{message.channel.id}) · agent:{self._agent.name} · {timestamp}]\n"
         content = meta + content
 
+        session_key = discord_key(message.channel.id, message.author.id)
+        log.info("discord ← agent=%s user=%s channel=%s(%s) len=%d images=%d",
+                 self._agent.name, message.author.display_name,
+                 channel_name, message.channel.id, len(content), len(image_urls))
+
         msg = InboundMessage(
             channel="discord",
-            session_key=discord_key(message.channel.id, message.author.id),
+            session_key=session_key,
             text=content,
             image_urls=image_urls,
             reply_ctx={"message": message},
@@ -243,7 +250,8 @@ class DiscordAdapter(ChannelAdapter):
             async with message.channel.typing():
                 await self._gateway.handle(msg)
         except Exception as e:
-            log.error("reply error: %s", e)
+            log.error("discord reply error: agent=%s session=%s err=%s",
+                      self._agent.name, session_key, e)
             await message.reply(f"Error: {e}")
         finally:
             hooks.fire_idle(self._agent.name)

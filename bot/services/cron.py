@@ -378,6 +378,9 @@ class CronScheduler:
             agent_match = re.search(r"delivery_agent:(\S+)", job.context or "")
             delivery_agent = agent_match.group(1) if agent_match else ""
 
+            log.info("job %s: submitting to gateway delivery=%s target=%s agent=%s",
+                     job.name, job.delivery_channel, job.channel_id, delivery_agent or "(default)")
+
             msg = InboundMessage(
                 channel="cron",
                 session_key=session_key,
