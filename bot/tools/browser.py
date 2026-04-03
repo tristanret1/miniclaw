@@ -13,13 +13,17 @@ from bot.logger import get_logger
 log = get_logger("browser")
 
 _page = None       # playwright Page
-_browser = None    # playwright Browser
+_context = None    # playwright BrowserContext (persistent)
 _playwright = None # playwright instance
+
+# Persistent profile directory — cookies/sessions survive restarts
+from bot.config import PROJECT_ROOT
+BROWSER_DATA_DIR = PROJECT_ROOT / "workspace" / "browser_data"
 
 
 async def _ensure_browser():
-    """Lazy-init Playwright browser and page."""
-    global _playwright, _browser, _page
+    """Lazy-init Playwright with persistent context (preserves login sessions)."""
+    global _playwright, _context, _page
 
     if _page and not _page.is_closed():
         return _page
@@ -29,23 +33,23 @@ async def _ensure_browser():
     if not _playwright:
         _playwright = await async_playwright().start()
 
-    if not _browser or not _browser.is_connected():
-        _browser = await _playwright.chromium.launch(
+    if not _context:
+        BROWSER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        _context = await _playwright.chromium.launch_persistent_context(
+            user_data_dir=str(BROWSER_DATA_DIR),
             headless=False,  # headed mode so Xvfb/VNC can see it
+            viewport={"width": 1280, "height": 720},
+            locale="zh-CN",
             args=[
                 "--no-sandbox",
                 "--disable-gpu",
-                "--window-size=1280,720",
             ],
         )
+        log.info("browser: persistent context opened (data=%s)", BROWSER_DATA_DIR)
 
     if not _page or _page.is_closed():
-        context = await _browser.new_context(
-            viewport={"width": 1280, "height": 720},
-            locale="zh-CN",
-        )
-        _page = await context.new_page()
-        log.info("browser: new page created")
+        _page = _context.pages[0] if _context.pages else await _context.new_page()
+        log.info("browser: page ready")
 
     return _page
 
@@ -179,9 +183,20 @@ async def run_browser(action: str, **kwargs) -> str | dict:
             "screenshot_base64": screenshot,
         }
 
+    elif action == "wait":
+        seconds = int(kwargs.get("seconds", 3))
+        seconds = min(seconds, 30)
+        await asyncio.sleep(seconds)
+        screenshot = await _take_screenshot()
+        return {
+            "type": "screenshot",
+            "url": page.url if (page := await _ensure_browser()) else "",
+            "screenshot_base64": screenshot,
+        }
+
     elif action == "close":
         await close_browser()
-        return "Browser closed."
+        return "Browser closed. Login sessions are preserved."
 
     elif action == "vnc_url":
         from bot.tools.browser_server import get_novnc_url
@@ -189,22 +204,20 @@ async def run_browser(action: str, **kwargs) -> str | dict:
         return url if url else "noVNC not available (not on server or not started)"
 
     else:
-        return f"Error: unknown action '{action}'. Available: navigate, click, type, press, scroll, screenshot, get_text, back, close, vnc_url"
+        return f"Error: unknown action '{action}'. Available: navigate, click, type, press, scroll, screenshot, get_text, wait, back, close, vnc_url"
 
 
 async def close_browser():
-    """Close the browser and cleanup."""
-    global _page, _browser, _playwright
-    if _page and not _page.is_closed():
-        await _page.close()
+    """Close the browser. Persistent data (cookies/sessions) is preserved on disk."""
+    global _page, _context, _playwright
     _page = None
-    if _browser and _browser.is_connected():
-        await _browser.close()
-    _browser = None
+    if _context:
+        await _context.close()
+    _context = None
     if _playwright:
         await _playwright.stop()
     _playwright = None
-    log.info("browser closed")
+    log.info("browser closed (data preserved at %s)", BROWSER_DATA_DIR)
 
 
 # ── Tool schema ──────────────────────────────────────────────────────────────
@@ -225,7 +238,7 @@ BROWSER_TOOL = {
                 "enum": [
                     "navigate", "click", "type", "press",
                     "scroll", "screenshot", "get_text",
-                    "back", "close", "vnc_url",
+                    "wait", "back", "close", "vnc_url",
                 ],
                 "description": "The browser action to perform.",
             },
@@ -261,6 +274,10 @@ BROWSER_TOOL = {
             "amount": {
                 "type": "number",
                 "description": "Scroll amount in pixels (default: 500).",
+            },
+            "seconds": {
+                "type": "number",
+                "description": "Seconds to wait (for 'wait' action, max 30).",
             },
         },
         "required": ["action"],
