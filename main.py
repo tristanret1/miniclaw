@@ -7,6 +7,34 @@ if len(sys.argv) > 1 and sys.argv[1] == "agents":
     cli_main(sys.argv[2:])
     sys.exit(0)
 
+# Delegate to KB CLI if "kb" subcommand is used
+if len(sys.argv) > 1 and sys.argv[1] == "kb":
+    import asyncio as _asyncio
+
+    async def _kb_cli():
+        args = sys.argv[2:]
+        if not args:
+            print("Usage: main.py kb <ingest|query|list|status|compile> [args]")
+            return
+        action = args[0]
+        from bot.services import kb
+        if action == "ingest" and len(args) > 1:
+            print(await kb.ingest(args[1], source_type=args[2] if len(args) > 2 else "auto"))
+        elif action == "query" and len(args) > 1:
+            print(await kb.query(" ".join(args[1:])))
+        elif action == "list":
+            print(kb.list_kb())
+        elif action == "status":
+            print(kb.status())
+        elif action == "compile":
+            print(await kb.compile())
+        else:
+            print(f"Unknown kb command: {action}")
+            print("Usage: main.py kb <ingest|query|list|status|compile> [args]")
+
+    _asyncio.run(_kb_cli())
+    sys.exit(0)
+
 # Parse CLI flags
 _only_agents: list[str] | None = None
 _only_gateways: set[str] | None = None  # e.g. {"feishu", "sms"}
