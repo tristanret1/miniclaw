@@ -78,3 +78,59 @@ class TestEnsureKbDirs:
         assert (kb_root / "wiki" / "concepts").is_dir()
         assert (kb_root / "wiki" / "summaries").is_dir()
         assert (kb_root / "wiki" / "queries").is_dir()
+
+
+class TestIngestWeb:
+    """Tests for web page ingest."""
+
+    @pytest.mark.asyncio
+    async def test_ingest_web_saves_markdown(self, kb_root, monkeypatch):
+        from bot.services import kb
+
+        # Mock browser tool to return fake page content
+        async def fake_fetch_web(action, **kwargs):
+            return {
+                "type": "text",
+                "title": "Test Article",
+                "url": kwargs.get("url", ""),
+                "text": "# Test\n\nThis is test content.",
+            }
+
+        monkeypatch.setattr(kb, "_fetch_web", fake_fetch_web)
+        monkeypatch.setattr(kb, "_get_kb_root", lambda: kb_root)
+        monkeypatch.setattr(kb, "_run_compile", lambda root: None)  # skip ACP
+        kb._ensure_kb_dirs(kb_root)
+
+        result = await kb.ingest("https://blog.example.com/test-post")
+        assert "saved" in result.lower() or "raw/" in result.lower()
+        # Check file was created in raw/
+        raw_files = list((kb_root / "raw").glob("*.md"))
+        assert len(raw_files) == 1
+        content = raw_files[0].read_text()
+        assert "source_url: https://blog.example.com/test-post" in content
+
+
+class TestIngestPdf:
+    """Tests for PDF ingest."""
+
+    @pytest.mark.asyncio
+    async def test_ingest_pdf_downloads_file(self, kb_root, monkeypatch):
+        from bot.services import kb
+
+        async def fake_download(command, **kwargs):
+            # Simulate curl creating the file - extract path from command
+            import re
+            match = re.search(r"-o '([^']+)'", command)
+            if match:
+                Path(match.group(1)).write_bytes(b"%PDF-1.4 fake content")
+            return "ok"
+
+        monkeypatch.setattr(kb, "_download_file", fake_download)
+        monkeypatch.setattr(kb, "_get_kb_root", lambda: kb_root)
+        monkeypatch.setattr(kb, "_run_compile", lambda root: None)
+        kb._ensure_kb_dirs(kb_root)
+
+        result = await kb.ingest("https://arxiv.org/pdf/2401.12345.pdf")
+        assert "saved" in result.lower() or "raw/" in result.lower()
+        raw_files = list((kb_root / "raw").glob("*.pdf"))
+        assert len(raw_files) == 1
