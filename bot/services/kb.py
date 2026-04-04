@@ -82,12 +82,142 @@ def _build_raw_filename(url: str, source_type: str) -> str:
     return f"{today}-{slug_no_ext}{ext}"
 
 
-# ── Placeholder for Task 4 ────────────────────────────────────────────────────
+# ── Compile: delegate to ACP to build/update wiki ───────────────────────────
+
+_COMPILE_TASK = """\
+You are a knowledge base compiler. Your job is to incrementally compile raw source \
+material into a structured wiki.
+
+Read .kb_state.json to find which raw/ files have NOT been processed yet. For each \
+unprocessed file:
+
+1. Read the raw file from raw/
+2. Write a summary to wiki/summaries/<slug>.md (include key facts, main arguments, \
+important data points)
+3. Identify core concepts — for each concept, create or UPDATE wiki/concepts/<concept>.md \
+(add new information, cross-reference other articles, maintain backlinks)
+4. Update wiki/index.md — this is the master index. Each entry should be one line: \
+`- [[concept-name]] — one-sentence summary`. Keep it sorted alphabetically.
+5. Update wiki/connections.md — map relationships between concepts \
+(e.g., "attention-mechanism → transformer-architecture")
+6. Mark the file as processed in .kb_state.json
+
+Article format:
+- Use standard Markdown with [[wikilinks]] for internal references
+- Each concept article should have: ## Summary, ## Details, ## Related, ## Sources
+- Keep articles focused — one concept per file
+
+If there are no unprocessed files, respond with "Wiki is up to date."
+"""
 
 
 async def _compile_async(root: Path) -> str:
-    """Run ACP compilation task. (Implemented in Task 4)"""
-    return "compile not yet implemented"
+    """Run ACP compilation task."""
+    from bot import acp
+    cfg = get_config().services.kb
+    result = await acp.run_prompt(
+        task=_COMPILE_TASK,
+        cwd=str(root),
+        timeout=cfg.compile_timeout,
+    )
+    log.info("kb compile done: %s", result[:200])
+    return result
+
+
+async def compile() -> str:
+    """Trigger wiki compilation via ACP."""
+    root = _get_kb_root()
+    _ensure_kb_dirs(root)
+    return await _compile_async(root)
+
+
+# ── Query: delegate deep research to ACP ────────────────────────────────────
+
+_QUERY_TASK_TEMPLATE = """\
+You are a research assistant working with a personal knowledge base wiki.
+
+Research the following question thoroughly:
+
+{question}
+
+Process:
+1. Read wiki/index.md to understand what topics are available
+2. Identify and read all relevant articles in wiki/concepts/ and wiki/summaries/
+3. If the wiki articles don't have enough detail, read the original sources in raw/
+4. Cross-reference multiple sources to build a comprehensive answer
+5. Save your answer to wiki/queries/{date}-{slug}.md
+
+Your answer should:
+- Cite specific sources from the wiki (use [[wikilinks]])
+- Synthesize information across multiple articles
+- Be thorough but well-organized with clear headings
+- Note any gaps or uncertainties in the available data
+
+Return the full answer text.
+"""
+
+
+async def query(question: str) -> str:
+    """Deep research query — delegates to ACP for multi-turn wiki exploration."""
+    root = _get_kb_root()
+    _ensure_kb_dirs(root)
+
+    from bot import acp
+    cfg = get_config().services.kb
+
+    today = date.today().isoformat()
+    slug = re.sub(r"[^\w]+", "-", question.lower())[:40].strip("-")
+
+    task = _QUERY_TASK_TEMPLATE.format(
+        question=question,
+        date=today,
+        slug=slug,
+    )
+
+    result = await acp.run_prompt(
+        task=task,
+        cwd=str(root),
+        timeout=cfg.query_timeout,
+    )
+    log.info("kb query done: %s", result[:200])
+    return result
+
+
+# ── List / Status: direct reads (no ACP needed) ─────────────────────────────
+
+
+def list_kb() -> str:
+    """List the wiki index contents."""
+    root = _get_kb_root()
+    index_path = root / "wiki" / "index.md"
+    if not index_path.exists():
+        return "Knowledge base is empty. Use `kb ingest <url>` to add content."
+    content = index_path.read_text(encoding="utf-8")
+    if not content.strip():
+        return "Knowledge base index is empty."
+    return content
+
+
+def status() -> str:
+    """Show KB status: raw file counts, compile state."""
+    root = _get_kb_root()
+    _ensure_kb_dirs(root)
+
+    raw_files = [f.name for f in (root / "raw").iterdir() if f.is_file()]
+    state = _load_state(root)
+    processed = state.get("processed", [])
+    pending = [f for f in raw_files if f not in processed]
+
+    concept_count = len(list((root / "wiki" / "concepts").glob("*.md")))
+    summary_count = len(list((root / "wiki" / "summaries").glob("*.md")))
+    query_count = len(list((root / "wiki" / "queries").glob("*.md")))
+
+    return (
+        f"KB root: {root}\n"
+        f"Raw files: {len(raw_files)} total, {len(processed)} compiled, {len(pending)} pending\n"
+        f"Wiki: {concept_count} concepts, {summary_count} summaries, {query_count} queries\n"
+        f"Pending: {', '.join(pending) if pending else 'none'}"
+    )
 
 
 # ── Ingest: download source material to raw/ ─────────────────────────────────

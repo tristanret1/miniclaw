@@ -134,3 +134,83 @@ class TestIngestPdf:
         assert "saved" in result.lower() or "raw/" in result.lower()
         raw_files = list((kb_root / "raw").glob("*.pdf"))
         assert len(raw_files) == 1
+
+
+class TestCompile:
+    """Tests for wiki compilation."""
+
+    @pytest.mark.asyncio
+    async def test_compile_calls_acp(self, kb_root, monkeypatch):
+        from bot.services import kb
+
+        acp_calls = []
+
+        async def fake_acp(task, cwd=None, timeout=300):
+            acp_calls.append({"task": task, "cwd": cwd, "timeout": timeout})
+            return "Compiled 2 new files"
+
+        monkeypatch.setattr(kb, "_get_kb_root", lambda: kb_root)
+        monkeypatch.setattr("bot.acp.run_prompt", fake_acp)
+        kb._ensure_kb_dirs(kb_root)
+
+        result = await kb.compile()
+        assert len(acp_calls) == 1
+        assert str(kb_root) in acp_calls[0]["cwd"]
+        assert "compile" in acp_calls[0]["task"].lower() or "wiki" in acp_calls[0]["task"].lower()
+
+
+class TestQuery:
+    """Tests for KB query."""
+
+    @pytest.mark.asyncio
+    async def test_query_calls_acp(self, kb_root, monkeypatch):
+        from bot.services import kb
+
+        acp_calls = []
+
+        async def fake_acp(task, cwd=None, timeout=300):
+            acp_calls.append({"task": task, "cwd": cwd, "timeout": timeout})
+            return "The attention mechanism works by..."
+
+        monkeypatch.setattr(kb, "_get_kb_root", lambda: kb_root)
+        monkeypatch.setattr("bot.acp.run_prompt", fake_acp)
+        kb._ensure_kb_dirs(kb_root)
+
+        result = await kb.query("How does attention work?")
+        assert len(acp_calls) == 1
+        assert "attention" in acp_calls[0]["task"].lower()
+        assert "attention mechanism" in result.lower()
+
+
+class TestList:
+    """Tests for KB list."""
+
+    def test_list_empty_kb(self, kb_root, monkeypatch):
+        from bot.services import kb
+        monkeypatch.setattr(kb, "_get_kb_root", lambda: kb_root)
+        kb._ensure_kb_dirs(kb_root)
+        result = kb.list_kb()
+        assert "empty" in result.lower() or "no " in result.lower()
+
+    def test_list_with_index(self, kb_root, monkeypatch):
+        from bot.services import kb
+        monkeypatch.setattr(kb, "_get_kb_root", lambda: kb_root)
+        kb._ensure_kb_dirs(kb_root)
+        (kb_root / "wiki" / "index.md").write_text("# KB Index\n\n- [[attention]] — core mechanism\n")
+        result = kb.list_kb()
+        assert "attention" in result
+
+
+class TestStatus:
+    """Tests for KB status."""
+
+    def test_status_counts_files(self, kb_root, monkeypatch):
+        from bot.services import kb
+        monkeypatch.setattr(kb, "_get_kb_root", lambda: kb_root)
+        kb._ensure_kb_dirs(kb_root)
+        (kb_root / "raw" / "file1.md").write_text("test")
+        (kb_root / "raw" / "file2.pdf").write_bytes(b"test")
+        kb._save_state(kb_root, {"processed": ["file1.md"]})
+        result = kb.status()
+        assert "2" in result  # total raw files
+        assert "1" in result  # processed
