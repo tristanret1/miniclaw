@@ -74,10 +74,38 @@ class CodexConfig:
 
 
 @dataclass
+class GLMConfig:
+    model: str = "glm-4.7-flash"
+    api_url: str = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+
+    @classmethod
+    def from_dict(cls, d: dict) -> GLMConfig:
+        return cls(
+            model=_str(d.get("model"), "glm-4.7-flash"),
+            api_url=_str(d.get("api_url"), "https://open.bigmodel.cn/api/paas/v4/chat/completions"),
+        )
+
+
+@dataclass
+class MinimaxConfig:
+    model: str = "MiniMax-M2.7"
+    api_url: str = "https://api.minimaxi.com/v1/text/chatcompletion_v2"
+
+    @classmethod
+    def from_dict(cls, d: dict) -> MinimaxConfig:
+        return cls(
+            model=_str(d.get("model"), "MiniMax-M2.7"),
+            api_url=_str(d.get("api_url"), "https://api.minimaxi.com/v1/text/chatcompletion_v2"),
+        )
+
+
+@dataclass
 class LLMConfig:
     provider: str = "anthropic"
     anthropic: AnthropicConfig = field(default_factory=AnthropicConfig)
     codex: CodexConfig = field(default_factory=CodexConfig)
+    glm: GLMConfig = field(default_factory=GLMConfig)
+    minimax: MinimaxConfig = field(default_factory=MinimaxConfig)
     max_history: int = 50
     max_tokens: int = 4096
     tools_enabled: bool = False
@@ -88,6 +116,8 @@ class LLMConfig:
             provider=_str(d.get("provider"), "anthropic"),
             anthropic=AnthropicConfig.from_dict(d.get("anthropic") or {}),
             codex=CodexConfig.from_dict(d.get("codex") or {}),
+            glm=GLMConfig.from_dict(d.get("glm") or {}),
+            minimax=MinimaxConfig.from_dict(d.get("minimax") or {}),
             max_history=_int(d.get("max_history"), 50),
             max_tokens=_int(d.get("max_tokens"), 4096),
             tools_enabled=_bool(d.get("tools_enabled"), False),

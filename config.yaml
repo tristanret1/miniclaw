@@ -6,6 +6,12 @@ llm:
   codex:
     model: gpt-5.3-codex
     api_url: https://chatgpt.com/backend-api/codex/responses
+  glm:
+    model: glm-4.7-flash
+    api_url: https://open.bigmodel.cn/api/paas/v4/chat/completions
+  minimax:
+    model: MiniMax-M2.7
+    api_url: https://api.minimaxi.com/v1/text/chatcompletion_v2
   max_history: 50
   max_tokens: 4096
   tools_enabled: true

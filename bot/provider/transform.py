@@ -184,6 +184,9 @@ def sanitize(messages: list[Message], provider_id: str) -> list[Message]:
     transformers = {
         "anthropic": sanitize_for_anthropic,
         "codex": sanitize_for_codex,
+        # GLM and MiniMax use OpenAI-compatible format — same constraints as Codex
+        "glm": sanitize_for_codex,
+        "minimax": sanitize_for_codex,
     }
     fn = transformers.get(provider_id, lambda m: m)
     return fn(messages)

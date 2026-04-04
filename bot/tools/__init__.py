@@ -19,6 +19,7 @@ from bot.tools.sms import PHONE_CALL_TOOL, SMS_TOOL, run_phone_call, run_sms
 from bot.tools.voice_tools import VOICE_ANNOUNCE_TOOL
 from bot.tools.browser import BROWSER_TOOL
 from bot.tools.twitter import TWITTER_TOOL
+from bot.tools.reddit import REDDIT_TOOL
 from bot.tools.kb import KB_TOOL
 
 log = get_logger("tools")
@@ -28,7 +29,7 @@ DEFAULT_TIMEOUT = EXEC_DEFAULT_TIMEOUT
 ALL_TOOLS = [
     EXEC_TOOL, MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL, CLAUDE_CODE_TOOL,
     CRON_CREATE_TOOL, CRON_LIST_TOOL, CRON_DELETE_TOOL, PHONE_CALL_TOOL, SMS_TOOL,
-    IMESSAGE_SEND_TOOL, BROWSER_TOOL, TWITTER_TOOL, KB_TOOL,
+    IMESSAGE_SEND_TOOL, BROWSER_TOOL, TWITTER_TOOL, REDDIT_TOOL, KB_TOOL,
 ]  # DISCORD_SEND_TOOL
 
 _cfg = get_config()
@@ -199,6 +200,11 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None,
         action = tool_input.get("action", "")
         kwargs = {k: v for k, v in tool_input.items() if k != "action"}
         return await run_twitter(action, **kwargs)
+    if tool_name == "reddit":
+        from bot.tools.reddit import run_reddit
+        action = tool_input.get("action", "")
+        kwargs = {k: v for k, v in tool_input.items() if k != "action"}
+        return await run_reddit(action, **kwargs)
     if tool_name == "kb":
         from bot.services import kb as kb_svc
         action = tool_input.get("action", "")

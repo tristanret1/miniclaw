@@ -119,19 +119,31 @@ class FeishuAdapter(ChannelAdapter):
             .build()
         )
 
-        # WebSocket client runs in its own thread
+        # WebSocket client runs in its own thread with auto-reconnect
         def _run_ws() -> None:
+            import time
             import lark_oapi.ws.client as _ws_mod
-            _ws_mod.loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(_ws_mod.loop)
 
-            ws_client = lark.ws.Client(
-                app_id,
-                app_secret,
-                event_handler=event_handler,
-                log_level=lark.LogLevel.WARNING,
-            )
-            ws_client.start()
+            backoff = 1
+            while True:
+                _ws_mod.loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(_ws_mod.loop)
+
+                ws_client = lark.ws.Client(
+                    app_id,
+                    app_secret,
+                    event_handler=event_handler,
+                    log_level=lark.LogLevel.WARNING,
+                )
+                try:
+                    log.info("feishu WS connecting (backoff=%ds)...", backoff)
+                    ws_client.start()  # blocks until disconnect
+                except Exception as e:
+                    log.warning("feishu WS error: %s", e)
+
+                log.warning("feishu WS disconnected, reconnecting in %ds...", backoff)
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 60)  # cap at 60s
 
         thread = threading.Thread(target=_run_ws, daemon=True, name="feishu-ws")
         thread.start()

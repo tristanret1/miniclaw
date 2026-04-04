@@ -12,11 +12,27 @@ const ANTHROPIC_MODELS = [
 ];
 
 const CODEX_MODELS = [
+  'gpt-5.4-codex',
   'gpt-5.3-codex',
   'gpt-5.2-codex',
   'gpt-5.1-codex',
   'gpt-5.1-codex-mini',
   'gpt-5.1-codex-max',
+];
+
+const GLM_MODELS = [
+  'glm-5',
+  'glm-5-turbo',
+  'glm-4.7',
+  'glm-4.7-flash',
+  'glm-4.7-flashx',
+];
+
+const MINIMAX_MODELS = [
+  'MiniMax-M2.7',
+  'MiniMax-M2.7-highspeed',
+  'MiniMax-M2.5',
+  'MiniMax-M2.5-highspeed',
 ];
 
 type View = 'form' | 'json';
@@ -65,8 +81,13 @@ export function ConfigEditor({ config, onSave }: Props) {
   const set = (path: string, value: unknown) => setDraft(deepSet(draft, path, value));
 
   const provider = (get('llm.provider') as string) || 'anthropic';
-  const models = provider === 'codex' ? CODEX_MODELS : ANTHROPIC_MODELS;
-  const modelPath = provider === 'codex' ? 'llm.codex.model' : 'llm.anthropic.model';
+  const PROVIDER_CONFIG: Record<string, { models: string[]; path: string }> = {
+    anthropic: { models: ANTHROPIC_MODELS, path: 'llm.anthropic.model' },
+    codex:     { models: CODEX_MODELS,     path: 'llm.codex.model' },
+    glm:       { models: GLM_MODELS,       path: 'llm.glm.model' },
+    minimax:   { models: MINIMAX_MODELS,   path: 'llm.minimax.model' },
+  };
+  const { models, path: modelPath } = PROVIDER_CONFIG[provider] ?? PROVIDER_CONFIG.anthropic;
   const currentModel = (get(modelPath) as string) || models[0];
 
   const handleSave = async () => {
@@ -105,6 +126,8 @@ export function ConfigEditor({ config, onSave }: Props) {
                 <select value={provider} onChange={(e) => set('llm.provider', e.target.value)} className={selectCls}>
                   <option value="anthropic">Anthropic (Claude)</option>
                   <option value="codex">Codex (OpenAI)</option>
+                  <option value="glm">GLM (智谱AI)</option>
+                  <option value="minimax">MiniMax</option>
                 </select>
               </Field>
               <Field label="Model">

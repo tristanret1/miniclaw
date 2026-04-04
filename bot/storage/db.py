@@ -243,6 +243,68 @@ async def ensure_schema() -> None:
             ON agent_documents (agent_id, doc_type, version DESC)
         """)
 
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS twitter_users (
+                id TEXT PRIMARY KEY,
+                user_name TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                is_verified BOOLEAN NOT NULL DEFAULT false,
+                is_blue_verified BOOLEAN NOT NULL DEFAULT false,
+                profile_picture TEXT NOT NULL DEFAULT '',
+                cover_picture TEXT,
+                description TEXT NOT NULL DEFAULT '',
+                location TEXT NOT NULL DEFAULT '',
+                followers INTEGER NOT NULL DEFAULT 0,
+                following INTEGER NOT NULL DEFAULT 0,
+                tweets_count INTEGER NOT NULL DEFAULT 0,
+                listed INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ,
+                raw_json TEXT,
+                fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
+
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_twitter_users_username
+            ON twitter_users (user_name)
+        """)
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS twitter_tweets (
+                id TEXT PRIMARY KEY,
+                url TEXT NOT NULL DEFAULT '',
+                text TEXT NOT NULL DEFAULT '',
+                source TEXT NOT NULL DEFAULT '',
+                author_id TEXT NOT NULL DEFAULT '',
+                author_username TEXT NOT NULL DEFAULT '',
+                retweet_count INTEGER NOT NULL DEFAULT 0,
+                reply_count INTEGER NOT NULL DEFAULT 0,
+                like_count INTEGER NOT NULL DEFAULT 0,
+                quote_count INTEGER NOT NULL DEFAULT 0,
+                view_count INTEGER NOT NULL DEFAULT 0,
+                bookmark_count INTEGER NOT NULL DEFAULT 0,
+                lang TEXT NOT NULL DEFAULT '',
+                is_reply BOOLEAN NOT NULL DEFAULT false,
+                in_reply_to_id TEXT,
+                conversation_id TEXT,
+                media_json TEXT,
+                quoted_tweet_json TEXT,
+                created_at TIMESTAMPTZ,
+                raw_json TEXT,
+                fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
+
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_twitter_tweets_author
+            ON twitter_tweets (author_username)
+        """)
+
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_twitter_tweets_created
+            ON twitter_tweets (created_at DESC)
+        """)
+
     log.info("PostgreSQL schema verified")
 
 

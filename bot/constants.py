@@ -43,7 +43,7 @@ CODEX_DEVICE_AUTH_PAGE = f"{CODEX_ISSUER}/codex/device"
 # ── LLM processing ────────────────────────────────────────────────────────────
 
 # Maximum tool-use rounds per streaming response before giving up
-MAX_TOOL_ROUNDS = 20
+MAX_TOOL_ROUNDS = 50
 
 # Maximum tool-use rounds during background auto-flush
 MAX_FLUSH_ROUNDS = 5

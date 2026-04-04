@@ -48,9 +48,14 @@ class Agent:
             return self.model
         from bot.config import get_config
         cfg = get_config()
-        if cfg.llm.provider == "codex":
-            return cfg.llm.codex.model
-        return cfg.llm.anthropic.model
+        provider = cfg.llm.provider
+        provider_configs = {
+            "codex": cfg.llm.codex,
+            "glm": cfg.llm.glm,
+            "minimax": cfg.llm.minimax,
+        }
+        pcfg = provider_configs.get(provider)
+        return pcfg.model if pcfg else cfg.llm.anthropic.model
 
     @property
     def effective_provider(self) -> str:
@@ -93,11 +98,7 @@ async def _load_from_db() -> list[Agent] | None:
 
             llm_cfg = config_dict.get("llm", {})
             provider = llm_cfg.get("provider", "")
-            model = ""
-            if provider == "codex":
-                model = llm_cfg.get("codex", {}).get("model", "")
-            elif provider == "anthropic":
-                model = llm_cfg.get("anthropic", {}).get("model", "")
+            model = llm_cfg.get(provider, {}).get("model", "") if provider else ""
 
             # Load latest documents
             soul = identity = user_doc = ""

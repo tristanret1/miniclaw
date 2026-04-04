@@ -66,6 +66,87 @@ def _get_solar_term(year: int, month: int, day: int) -> str | None:
     return None
 
 
+# ── 历史记录压缩 ────────────────────────────────────────────────────────────
+# 工具循环中 tool_result 会快速累积（每轮 3 个搜索 × 6 轮 = 18 条），
+# 导致 input tokens 膨胀。当历史超过阈值时，将旧 tool_result 的 content
+# 替换为简短占位符，只保留最近一轮的完整结果供 LLM 参考。
+
+# 粗估 token 数的阈值（~10k tokens ≈ 40k chars，中文约 2 char/token）
+_COMPACT_CHAR_THRESHOLD = 40_000
+
+
+def _estimate_history_chars(history: list[dict]) -> int:
+    """粗估历史记录的总字符数。"""
+    total = 0
+    for msg in history:
+        c = msg.get("content")
+        if isinstance(c, str):
+            total += len(c)
+        elif isinstance(c, list):
+            for block in c:
+                if isinstance(block, dict):
+                    # tool_result content / text block
+                    total += len(str(block.get("content", "")))
+                    total += len(str(block.get("text", "")))
+                elif isinstance(block, str):
+                    total += len(block)
+    return total
+
+
+def _compact_tool_results(history: list[dict]) -> None:
+    """原地压缩历史中的旧 tool_result，超阈值时触发。
+
+    策略：
+    - 找到所有包含 tool_result 的 user 消息
+    - 保留最后一条（最近一轮的结果），压缩其余所有
+    - 每个 tool_result 的 content 替换为 "[已清理的工具结果]"
+    - assistant 消息中的 tool_use block 保留（API 要求 tool_use/tool_result 配对）
+    """
+    if _estimate_history_chars(history) < _COMPACT_CHAR_THRESHOLD:
+        return
+
+    # 找出所有含 tool_result 的 user 消息的索引
+    tool_msg_indices = []
+    for i, msg in enumerate(history):
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content")
+        if isinstance(content, list) and any(
+            isinstance(b, dict) and b.get("type") == "tool_result" for b in content
+        ):
+            tool_msg_indices.append(i)
+
+    if len(tool_msg_indices) <= 1:
+        # 只有一轮或没有 tool_result，不压缩
+        return
+
+    # 保留最后一条 tool_result 消息完整，压缩其余
+    chars_before = _estimate_history_chars(history)
+    for idx in tool_msg_indices[:-1]:
+        content = history[idx]["content"]
+        if not isinstance(content, list):
+            continue
+        compacted = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                compacted.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.get("tool_use_id", ""),
+                    "content": "[已清理的工具结果]",
+                })
+            else:
+                compacted.append(block)
+        history[idx] = {"role": "user", "content": compacted}
+
+    chars_after = _estimate_history_chars(history)
+    log.info(
+        "compacted tool results: %d tool messages compressed, ~%dk → ~%dk chars",
+        len(tool_msg_indices) - 1,
+        chars_before // 1000,
+        chars_after // 1000,
+    )
+
+
 class StreamProcessor:
     """Process LLM streaming responses: tool loop, content accumulation, auto-flush."""
 
@@ -127,6 +208,9 @@ class StreamProcessor:
         tools = ALL_TOOLS if get_config().llm.tools_enabled else None
 
         for round_num in range(1, MAX_TOOL_ROUNDS + 1):
+            # 每轮 API 调用前检查历史大小，超过阈值时压缩旧的 tool_result
+            _compact_tool_results(history)
+
             collected_text: list[str] = []
             collected_content: list[dict] = []
             stop_reason = None
@@ -226,18 +310,36 @@ class StreamProcessor:
                 ", ".join(f"{b['name']}({b.get('input', {})})" for b in tool_blocks),
             )
 
-            tool_results = await self._handle_tool_calls(tool_blocks)
+            tool_results, tool_results_for_history = await self._handle_tool_calls(tool_blocks)
 
             if not tool_results:
                 yield "[Error: Tool execution failed]"
                 return
 
-            await self.session.append(self.session_key, "user", tool_results)
+            # 将纯文本版本写入 DB（prompt cache 友好）
+            await self.session.append(self.session_key, "user", tool_results_for_history)
+
+            if tool_results != tool_results_for_history:
+                # 内存中替换为完整版本（含截图），让当前工具循环的下一轮 API 调用能看到图片。
+                # 重启后从 DB 加载时只会拿到纯文本版本 — 截图仅在当前工具循环内存活。
+                history[-1] = {"role": "user", "content": tool_results}
 
         yield "[Stopped: too many tool calls]"
 
-    async def _handle_tool_calls(self, tool_blocks: list[dict]) -> list[dict]:
-        """Execute tool calls concurrently, return results."""
+    async def _handle_tool_calls(self, tool_blocks: list[dict]) -> tuple[list[dict], list[dict]]:
+        """并发执行工具调用，返回两个版本的结果。
+
+        Returns:
+            (full_results, history_results) 元组：
+            - full_results:    完整结果（含截图 image block），用于当前 API 调用
+            - history_results: 纯文本结果（截图替换为占位符），用于持久化到 session DB
+
+        为什么要分两个版本？
+        截图的 base64 每次像素不同，存入历史会导致 Claude prompt cache 失效，
+        整段历史每轮都要重新计费。纯文本前缀稳定，cache 命中率高。
+        当前工具循环内 LLM 仍然能看到截图（通过内存中的 full_results），
+        但重启或新会话加载时只会读到 DB 里的纯文本版本。
+        """
 
         async def _run_tool(block: dict) -> dict:
             try:
@@ -258,7 +360,28 @@ class StreamProcessor:
                     "is_error": True,
                 }
 
-        return list(await asyncio.gather(*[_run_tool(b) for b in tool_blocks]))
+        full_results = list(await asyncio.gather(*[_run_tool(b) for b in tool_blocks]))
+
+        # 构建纯文本版本：将 image block 替换为 "[screenshot taken]" 占位符，
+        # 保留 text block 的内容（如页面标题、URL 等元信息）
+        history_results = []
+        for r in full_results:
+            content = r.get("content")
+            if isinstance(content, list) and any(
+                isinstance(b, dict) and b.get("type") == "image" for b in content
+            ):
+                text_parts = [
+                    b.get("text", "") for b in content
+                    if isinstance(b, dict) and b.get("type") == "text"
+                ]
+                history_results.append({
+                    **r,
+                    "content": "\n".join(text_parts) + "\n[screenshot taken]" if text_parts else "[screenshot taken]",
+                })
+            else:
+                history_results.append(r)
+
+        return full_results, history_results
 
     async def _run_flush(self, history: list[dict]) -> None:
         """Background auto-flush: save conversation highlights to memory."""
