@@ -18,6 +18,8 @@ from bot.tools.memory_tools import MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL
 from bot.tools.sms import PHONE_CALL_TOOL, SMS_TOOL, run_phone_call, run_sms
 from bot.tools.voice_tools import VOICE_ANNOUNCE_TOOL
 from bot.tools.browser import BROWSER_TOOL
+from bot.tools.twitter import TWITTER_TOOL
+from bot.tools.kb import KB_TOOL
 
 log = get_logger("tools")
 
@@ -26,7 +28,7 @@ DEFAULT_TIMEOUT = EXEC_DEFAULT_TIMEOUT
 ALL_TOOLS = [
     EXEC_TOOL, MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL, CLAUDE_CODE_TOOL,
     CRON_CREATE_TOOL, CRON_LIST_TOOL, CRON_DELETE_TOOL, PHONE_CALL_TOOL, SMS_TOOL,
-    IMESSAGE_SEND_TOOL, BROWSER_TOOL,
+    IMESSAGE_SEND_TOOL, BROWSER_TOOL, TWITTER_TOOL, KB_TOOL,
 ]  # DISCORD_SEND_TOOL
 
 _cfg = get_config()
@@ -192,5 +194,33 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None,
         if isinstance(result, dict):
             return "\n".join(f"{k}: {v}" for k, v in result.items() if v)
         return result
+    if tool_name == "twitter":
+        from bot.tools.twitter import run_twitter
+        action = tool_input.get("action", "")
+        kwargs = {k: v for k, v in tool_input.items() if k != "action"}
+        return await run_twitter(action, **kwargs)
+    if tool_name == "kb":
+        from bot.services import kb as kb_svc
+        action = tool_input.get("action", "")
+        if action == "ingest":
+            url = tool_input.get("url", "")
+            if not url:
+                return "Error: url is required for ingest"
+            return await kb_svc.ingest(
+                url=url,
+                source_type=tool_input.get("type", "auto"),
+            )
+        if action == "query":
+            question = tool_input.get("question", "")
+            if not question:
+                return "Error: question is required for query"
+            return await kb_svc.query(question=question)
+        if action == "list":
+            return kb_svc.list_kb()
+        if action == "status":
+            return kb_svc.status()
+        if action == "compile":
+            return await kb_svc.compile()
+        return f"Error: unknown kb action '{action}'"
     log.warning("unknown tool called: %s", tool_name)
     return f"Unknown tool: {tool_name}"

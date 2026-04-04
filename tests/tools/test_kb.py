@@ -214,3 +214,27 @@ class TestStatus:
         result = kb.status()
         assert "2" in result  # total raw files
         assert "1" in result  # processed
+
+
+class TestKbToolDispatch:
+    """Tests for kb tool dispatch in __init__.py."""
+
+    @pytest.mark.asyncio
+    async def test_handle_tool_call_kb_list(self, kb_root, monkeypatch):
+        from bot.services import kb
+        monkeypatch.setattr(kb, "_get_kb_root", lambda: kb_root)
+        kb._ensure_kb_dirs(kb_root)
+
+        from bot.tools import handle_tool_call
+        result = await handle_tool_call("kb", {"action": "list"})
+        assert "empty" in result.lower() or isinstance(result, str)
+
+    @pytest.mark.asyncio
+    async def test_handle_tool_call_kb_status(self, kb_root, monkeypatch):
+        from bot.services import kb
+        monkeypatch.setattr(kb, "_get_kb_root", lambda: kb_root)
+        kb._ensure_kb_dirs(kb_root)
+
+        from bot.tools import handle_tool_call
+        result = await handle_tool_call("kb", {"action": "status"})
+        assert "raw files" in result.lower() or "kb root" in result.lower()
