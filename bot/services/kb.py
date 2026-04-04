@@ -30,6 +30,94 @@ def _get_kb_root() -> Path:
     return Path(cfg.root).expanduser().resolve()
 
 
+_KB_CLAUDE_MD = """\
+# Knowledge Base Wiki — Compilation Guide
+
+You are maintaining a personal knowledge base wiki. Follow these conventions exactly.
+
+## Directory Structure
+
+- `raw/` — source material (do not modify these files)
+- `wiki/index.md` — master index, one entry per concept: `- [[concept-name]] — summary`
+- `wiki/concepts/` — one .md file per concept
+- `wiki/summaries/` — one .md file per raw source
+- `wiki/queries/` — archived research Q&A outputs
+- `wiki/connections.md` — relationship map between concepts
+- `.kb_state.json` — tracks which raw files are processed (update after each compile)
+
+## Article Format (concepts)
+
+```markdown
+# Concept Name
+
+## Summary
+2-3 sentence overview.
+
+## Details
+In-depth explanation with key facts, data points, arguments.
+
+## Related
+- [[other-concept]] — how it relates
+- [[another-concept]] — connection description
+
+## Sources
+- [[summaries/source-slug]] — what this source contributed
+```
+
+## Article Format (summaries)
+
+```markdown
+# Source Title
+
+- **URL:** original source URL
+- **Type:** web/pdf/youtube
+- **Ingested:** date
+
+## Key Points
+Bulleted list of main takeaways.
+
+## Concepts Referenced
+- [[concept-name]] — what was learned about this concept
+```
+
+## Index Format (wiki/index.md)
+
+```markdown
+# Knowledge Base Index
+
+## Concepts
+- [[attention-mechanism]] — weighted aggregation of values by learned relevance scores
+- [[transformer]] — encoder-decoder architecture based on self-attention
+
+## Sources
+- [[summaries/arxiv-attention]] — original attention paper (Vaswani et al.)
+```
+
+Keep alphabetically sorted. One line per entry. Update on every compile.
+
+## Wikilinks
+
+Use `[[filename]]` (without extension) for internal links. These render in Obsidian.
+
+## Rules
+1. Never modify files in raw/
+2. Always update index.md when adding/modifying articles
+3. Always update connections.md when relationships change
+4. Always update .kb_state.json after processing raw files
+5. Prefer updating existing articles over creating new ones
+6. Keep summaries factual — no opinion or interpretation
+7. Concept articles should synthesize across all sources
+"""
+
+
+def _ensure_claude_md(root: Path) -> None:
+    """Write CLAUDE.md to KB root if it doesn't exist."""
+    claude_md = root / "CLAUDE.md"
+    if not claude_md.exists():
+        claude_md.write_text(_KB_CLAUDE_MD, encoding="utf-8")
+        log.info("kb: created CLAUDE.md at %s", claude_md)
+
+
 def _ensure_kb_dirs(root: Path) -> None:
     """Create the KB directory structure if it doesn't exist."""
     for subdir in [
@@ -40,6 +128,7 @@ def _ensure_kb_dirs(root: Path) -> None:
         "wiki/queries",
     ]:
         (root / subdir).mkdir(parents=True, exist_ok=True)
+    _ensure_claude_md(root)
 
 
 def _load_state(root: Path) -> dict:

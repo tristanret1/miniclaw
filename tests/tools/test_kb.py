@@ -216,6 +216,27 @@ class TestStatus:
         assert "1" in result  # processed
 
 
+class TestClaudeMd:
+    """Tests for CLAUDE.md generation."""
+
+    def test_creates_claude_md(self, kb_root):
+        from bot.services.kb import _ensure_kb_dirs
+        _ensure_kb_dirs(kb_root)
+        claude_md = kb_root / "CLAUDE.md"
+        assert claude_md.exists()
+        content = claude_md.read_text()
+        assert "Knowledge Base" in content
+        assert "index.md" in content
+
+    def test_does_not_overwrite_existing(self, kb_root):
+        from bot.services.kb import _ensure_kb_dirs
+        claude_md = kb_root / "CLAUDE.md"
+        kb_root.mkdir(exist_ok=True)
+        claude_md.write_text("custom content")
+        _ensure_kb_dirs(kb_root)
+        assert claude_md.read_text() == "custom content"
+
+
 class TestKbToolDispatch:
     """Tests for kb tool dispatch in __init__.py."""
 
