@@ -91,6 +91,12 @@ services:
     backoff: [30, 60, 300, 900, 3600]
   health:
     enabled: true
+  kb:
+    enabled: true
+    root: ~/kb
+    auto_compile: true
+    compile_timeout: 600
+    query_timeout: 300
   timeouts:
     http_read: 120
     http_connect: 10

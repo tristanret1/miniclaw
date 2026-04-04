@@ -379,6 +379,25 @@ class HealthConfig:
 
 
 @dataclass
+class KbConfig:
+    enabled: bool = True
+    root: str = "~/kb"
+    auto_compile: bool = True
+    compile_timeout: int = 600
+    query_timeout: int = 300
+
+    @classmethod
+    def from_dict(cls, d: dict) -> KbConfig:
+        return cls(
+            enabled=_bool(d.get("enabled"), True),
+            root=_str(d.get("root"), "~/kb"),
+            auto_compile=_bool(d.get("auto_compile"), True),
+            compile_timeout=_int(d.get("compile_timeout"), 600),
+            query_timeout=_int(d.get("query_timeout"), 300),
+        )
+
+
+@dataclass
 class TimeoutsConfig:
     http_read: int = 120
     http_connect: int = 10
@@ -402,6 +421,7 @@ class ServicesConfig:
     google_calendar: GoogleCalendarConfig = field(default_factory=GoogleCalendarConfig)
     cron: CronConfig = field(default_factory=CronConfig)
     health: HealthConfig = field(default_factory=HealthConfig)
+    kb: KbConfig = field(default_factory=KbConfig)
     timeouts: TimeoutsConfig = field(default_factory=TimeoutsConfig)
 
     @classmethod
@@ -410,6 +430,7 @@ class ServicesConfig:
             google_calendar=GoogleCalendarConfig.from_dict(d.get("google_calendar") or {}),
             cron=CronConfig.from_dict(d.get("cron") or {}),
             health=HealthConfig.from_dict(d.get("health") or {}),
+            kb=KbConfig.from_dict(d.get("kb") or {}),
             timeouts=TimeoutsConfig.from_dict(d.get("timeouts") or {}),
         )
 
