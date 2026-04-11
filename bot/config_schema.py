@@ -82,7 +82,7 @@ class GLMConfig:
     def from_dict(cls, d: dict) -> GLMConfig:
         return cls(
             model=_str(d.get("model"), "glm-4.7-flash"),
-            api_url=_str(d.get("api_url"), "https://open.bigmodel.cn/api/paas/v4/chat/completions"),
+            api_url=_str(d.get("api_url"), "https://api.z.ai/api/paas/v4/chat/completions"),
         )
 
 
@@ -106,7 +106,7 @@ class LLMConfig:
     codex: CodexConfig = field(default_factory=CodexConfig)
     glm: GLMConfig = field(default_factory=GLMConfig)
     minimax: MinimaxConfig = field(default_factory=MinimaxConfig)
-    max_history: int = 50
+    max_history: int = 25
     max_tokens: int = 4096
     tools_enabled: bool = False
 
@@ -118,7 +118,7 @@ class LLMConfig:
             codex=CodexConfig.from_dict(d.get("codex") or {}),
             glm=GLMConfig.from_dict(d.get("glm") or {}),
             minimax=MinimaxConfig.from_dict(d.get("minimax") or {}),
-            max_history=_int(d.get("max_history"), 50),
+            max_history=_int(d.get("max_history"), 25),
             max_tokens=_int(d.get("max_tokens"), 4096),
             tools_enabled=_bool(d.get("tools_enabled"), False),
         )
@@ -224,7 +224,6 @@ class VolcengineConfig:
 @dataclass
 class SMSConfig:
     enabled: bool = False
-    agent: str = ""
     webhook_port: int = 8080
     webhook_url: str = ""
 
@@ -232,29 +231,10 @@ class SMSConfig:
     def from_dict(cls, d: dict) -> SMSConfig:
         return cls(
             enabled=_bool(d.get("enabled"), False),
-            agent=_str(d.get("agent"), ""),
             webhook_port=_int(d.get("webhook_port"), 8080),
             webhook_url=_str(d.get("webhook_url"), ""),
         )
 
-
-@dataclass
-class IMessageConfig:
-    enabled: bool = False
-    cli_path: str = "imsg"
-    db_path: str = ""
-    allow_from: list = field(default_factory=list)
-    service: str = "auto"
-
-    @classmethod
-    def from_dict(cls, d: dict) -> IMessageConfig:
-        return cls(
-            enabled=_bool(d.get("enabled"), False),
-            cli_path=_str(d.get("cli_path"), "imsg"),
-            db_path=_str(d.get("db_path"), ""),
-            allow_from=_list(d.get("allow_from"), []),
-            service=_str(d.get("service"), "auto"),
-        )
 
 
 @dataclass
@@ -299,30 +279,14 @@ class ApiConfig:
         )
 
 
-@dataclass
-class FeishuConfig:
-    enabled: bool = False
-    agent: str = ""
-    allow_from: list = field(default_factory=list)
-
-    @classmethod
-    def from_dict(cls, d: dict) -> FeishuConfig:
-        return cls(
-            enabled=_bool(d.get("enabled"), False),
-            agent=_str(d.get("agent"), ""),
-            allow_from=_list(d.get("allow_from"), []),
-        )
-
 
 @dataclass
 class GatewayConfig:
     voice: VoiceConfig = field(default_factory=VoiceConfig)
     volcengine: VolcengineConfig = field(default_factory=VolcengineConfig)
     sms: SMSConfig = field(default_factory=SMSConfig)
-    imessage: IMessageConfig = field(default_factory=IMessageConfig)
     heartbeat: HeartbeatConfig = field(default_factory=HeartbeatConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
-    feishu: FeishuConfig = field(default_factory=FeishuConfig)
 
     @classmethod
     def from_dict(cls, d: dict) -> GatewayConfig:
@@ -330,10 +294,8 @@ class GatewayConfig:
             voice=VoiceConfig.from_dict(d.get("voice") or {}),
             volcengine=VolcengineConfig.from_dict(d.get("volcengine") or {}),
             sms=SMSConfig.from_dict(d.get("sms") or {}),
-            imessage=IMessageConfig.from_dict(d.get("imessage") or {}),
             heartbeat=HeartbeatConfig.from_dict(d.get("heartbeat") or {}),
             api=ApiConfig.from_dict(d.get("api") or {}),
-            feishu=FeishuConfig.from_dict(d.get("feishu") or {}),
         )
 
 

@@ -13,7 +13,6 @@ from bot.tools.cron_tools import CRON_CREATE_TOOL, CRON_DELETE_TOOL, CRON_LIST_T
 from bot.tools.discord_send import DISCORD_SEND_TOOL, run_discord_send
 from bot.tools.exec import EXEC_TOOL, MAX_OUTPUT_CHARS, run_exec
 from bot.tools.health_tools import HEALTH_GOAL_TOOL, HEALTH_LOG_TOOL, HEALTH_STATS_TOOL
-from bot.tools.imessage_tools import IMESSAGE_SEND_TOOL
 from bot.tools.memory_tools import MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL
 from bot.tools.sms import PHONE_CALL_TOOL, SMS_TOOL, run_phone_call, run_sms
 from bot.tools.voice_tools import VOICE_ANNOUNCE_TOOL
@@ -29,7 +28,7 @@ DEFAULT_TIMEOUT = EXEC_DEFAULT_TIMEOUT
 ALL_TOOLS = [
     EXEC_TOOL, MEMORY_SAVE_TOOL, MEMORY_SEARCH_TOOL, CLAUDE_CODE_TOOL,
     CRON_CREATE_TOOL, CRON_LIST_TOOL, CRON_DELETE_TOOL, PHONE_CALL_TOOL, SMS_TOOL,
-    IMESSAGE_SEND_TOOL, BROWSER_TOOL, TWITTER_TOOL, REDDIT_TOOL, KB_TOOL,
+    BROWSER_TOOL, TWITTER_TOOL, REDDIT_TOOL, KB_TOOL,
 ]  # DISCORD_SEND_TOOL
 
 _cfg = get_config()
@@ -80,11 +79,6 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None,
         )
     if tool_name == "cron_create":
         from bot.services import cron
-        # Embed agent name in context for delivery routing
-        context = tool_input.get("context", "")
-        agent_tag = tool_input.get("agent", "")
-        if agent_tag:
-            context = f"delivery_agent:{agent_tag}\n{context}" if context else f"delivery_agent:{agent_tag}"
         return await cron.create_job(
             name=tool_input["name"],
             schedule_type=tool_input["schedule_type"],
@@ -93,7 +87,7 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None,
             channel_id=tool_input["channel_id"],
             timezone=tool_input.get("timezone", ""),
             session_mode=tool_input.get("session_mode", "isolated"),
-            context=context,
+            context=tool_input.get("context", ""),
             model=tool_input.get("model", ""),
             delivery_channel=tool_input.get("delivery_channel", "discord"),
         )
@@ -116,12 +110,6 @@ async def handle_tool_call(tool_name: str, tool_input: dict, memory_dir=None,
             message=tool_input["message"],
             language=tool_input.get("language", "zh-CN"),
         )
-    if tool_name == "imessage_send":
-        from bot.channel.imessage import get_gateway_client, send_imessage, run_imessage_send
-        client = get_gateway_client()
-        if client:
-            return await send_imessage(client, to=tool_input["to"], message=tool_input["message"])
-        return await run_imessage_send(to=tool_input["to"], message=tool_input["message"])
     if tool_name == "voice_announce":
         from bot.channel.voice import announce
         return await announce(

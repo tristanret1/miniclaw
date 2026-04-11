@@ -66,85 +66,6 @@ def _get_solar_term(year: int, month: int, day: int) -> str | None:
     return None
 
 
-# ── 历史记录压缩 ────────────────────────────────────────────────────────────
-# 工具循环中 tool_result 会快速累积（每轮 3 个搜索 × 6 轮 = 18 条），
-# 导致 input tokens 膨胀。当历史超过阈值时，将旧 tool_result 的 content
-# 替换为简短占位符，只保留最近一轮的完整结果供 LLM 参考。
-
-# 粗估 token 数的阈值（~10k tokens ≈ 40k chars，中文约 2 char/token）
-_COMPACT_CHAR_THRESHOLD = 40_000
-
-
-def _estimate_history_chars(history: list[dict]) -> int:
-    """粗估历史记录的总字符数。"""
-    total = 0
-    for msg in history:
-        c = msg.get("content")
-        if isinstance(c, str):
-            total += len(c)
-        elif isinstance(c, list):
-            for block in c:
-                if isinstance(block, dict):
-                    # tool_result content / text block
-                    total += len(str(block.get("content", "")))
-                    total += len(str(block.get("text", "")))
-                elif isinstance(block, str):
-                    total += len(block)
-    return total
-
-
-def _compact_tool_results(history: list[dict]) -> None:
-    """原地压缩历史中的旧 tool_result，超阈值时触发。
-
-    策略：
-    - 找到所有包含 tool_result 的 user 消息
-    - 保留最后一条（最近一轮的结果），压缩其余所有
-    - 每个 tool_result 的 content 替换为 "[已清理的工具结果]"
-    - assistant 消息中的 tool_use block 保留（API 要求 tool_use/tool_result 配对）
-    """
-    if _estimate_history_chars(history) < _COMPACT_CHAR_THRESHOLD:
-        return
-
-    # 找出所有含 tool_result 的 user 消息的索引
-    tool_msg_indices = []
-    for i, msg in enumerate(history):
-        if msg.get("role") != "user":
-            continue
-        content = msg.get("content")
-        if isinstance(content, list) and any(
-            isinstance(b, dict) and b.get("type") == "tool_result" for b in content
-        ):
-            tool_msg_indices.append(i)
-
-    if len(tool_msg_indices) <= 1:
-        # 只有一轮或没有 tool_result，不压缩
-        return
-
-    # 保留最后一条 tool_result 消息完整，压缩其余
-    chars_before = _estimate_history_chars(history)
-    for idx in tool_msg_indices[:-1]:
-        content = history[idx]["content"]
-        if not isinstance(content, list):
-            continue
-        compacted = []
-        for block in content:
-            if isinstance(block, dict) and block.get("type") == "tool_result":
-                compacted.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.get("tool_use_id", ""),
-                    "content": "[已清理的工具结果]",
-                })
-            else:
-                compacted.append(block)
-        history[idx] = {"role": "user", "content": compacted}
-
-    chars_after = _estimate_history_chars(history)
-    log.info(
-        "compacted tool results: %d tool messages compressed, ~%dk → ~%dk chars",
-        len(tool_msg_indices) - 1,
-        chars_before // 1000,
-        chars_after // 1000,
-    )
 
 
 class StreamProcessor:
@@ -206,10 +127,9 @@ class StreamProcessor:
 
         history = await self.session.get_history(self.session_key)
         tools = ALL_TOOLS if get_config().llm.tools_enabled else None
+        history_len_before_loop = len(history)
 
         for round_num in range(1, MAX_TOOL_ROUNDS + 1):
-            # 每轮 API 调用前检查历史大小，超过阈值时压缩旧的 tool_result
-            _compact_tool_results(history)
 
             collected_text: list[str] = []
             collected_content: list[dict] = []
@@ -299,6 +219,30 @@ class StreamProcessor:
             await self.session.append(self.session_key, "assistant", collected_content)
 
             if stop_reason != "tool_use":
+                # Collapse tool-loop intermediate messages:
+                # Before loop: [...old, user_question]
+                # After loop:  [...old, user_question, asst_r1, user_tr1, ..., asst_final]
+                # Collapse to: [...old, user_question, asst_final_text_only]
+                added = len(history) - history_len_before_loop
+                if added > 1:
+                    # Extract text-only content from final assistant message
+                    final_content = collected_content
+                    if isinstance(final_content, list):
+                        text_blocks = [b for b in final_content
+                                       if isinstance(b, dict) and b.get("type") == "text"]
+                        if len(text_blocks) == 1:
+                            final_content = text_blocks[0]["text"]
+                        elif text_blocks:
+                            final_content = text_blocks
+                        # else: keep original (shouldn't happen)
+
+                    await self.session.replace_recent(
+                        self.session_key, added, "assistant", final_content,
+                    )
+                    log.info(
+                        "collapsed tool loop: %d intermediate messages removed for session %s",
+                        added - 1, self.session_key,
+                    )
                 return
 
             # Process tool calls

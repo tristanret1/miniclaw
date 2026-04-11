@@ -21,7 +21,10 @@ class TestBuildBody:
         )
         assert body["model"] == "claude-test"
         assert body["stream"] is True
-        assert body["tools"] == tools
+        # tools 最后一个应带 cache_control（稳定内容，适合缓存）
+        assert len(body["tools"]) == 1
+        assert body["tools"][0]["name"] == "exec"
+        assert body["tools"][0]["cache_control"] == {"type": "ephemeral"}
         assert body["max_tokens"] == 1024
 
     def test_without_tools(self):

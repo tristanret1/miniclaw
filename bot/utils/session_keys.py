@@ -21,18 +21,5 @@ def heartbeat_key(channel_id: str, *, isolated: bool = False) -> str:
 def voice_key() -> str:
     return "voice:local"
 
-def imessage_key(handle: str) -> str:
-    h = handle.strip().lower()
-    # Strip service prefix like "imessage:" or "sms:"
-    if ":" in h and not h.startswith("+"):
-        h = h.split(":", 1)[1]
-    return f"imessage:{h}"
-
 def sms_key(from_number: str) -> str:
     return f"sms:{from_number}"
-
-def pixeltown_key(agent_id: str) -> str:
-    return f"pixeltown:{agent_id}"
-
-def feishu_key(chat_id: str, sender_id: str) -> str:
-    return f"feishu:{chat_id}:{sender_id}"

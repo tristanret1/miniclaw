@@ -81,13 +81,6 @@ def test_config():
                 "sample_rate": 16000,
             },
             "sms": {"enabled": False, "webhook_port": 8080, "webhook_url": ""},
-            "imessage": {
-                "enabled": False,
-                "cli_path": "imsg",
-                "db_path": "",
-                "allow_from": [],
-                "service": "auto",
-            },
             "heartbeat": {"enabled": False},
             "api": {"enabled": False},
         },

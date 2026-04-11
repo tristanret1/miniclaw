@@ -62,9 +62,9 @@ class TestSessionManager:
         assert (await mgr.get_history("session_a"))[0]["content"] == "a msg"
 
     async def test_append_list_content(self, session_db):
-        """Structured content (tool blocks) persists as JSON."""
+        """Tool blocks are stripped on DB reload — only text survives."""
         mgr = SessionManager()
-        # Build a valid tool_use + tool_result pair so sanitization keeps them
+        # Build a valid tool_use + tool_result pair
         await mgr.append("test:1", "user", "run ls")
         await mgr.append("test:1", "assistant", [
             {"type": "tool_use", "id": "t1", "name": "exec", "input": {"command": "ls"}},
@@ -79,9 +79,10 @@ class TestSessionManager:
 
         mgr2 = SessionManager()
         history = await mgr2.get_history("test:1")
-        assert len(history) == 3
-        assert isinstance(history[2]["content"], list)
-        assert history[2]["content"][0]["type"] == "tool_result"
+        # tool_use-only assistant and tool_result-only user are stripped,
+        # leaving only the original text user message
+        assert len(history) == 1
+        assert history[0]["content"] == "run ls"
 
     async def test_sanitization_on_load(self, session_db):
         """Malformed tool pairs in DB are sanitized on load."""

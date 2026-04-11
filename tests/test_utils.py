@@ -10,7 +10,6 @@ from bot.utils.session_keys import (
     cron_key,
     heartbeat_key,
     voice_key,
-    imessage_key,
     sms_key,
 )
 from bot.utils.discord import send_chunks
@@ -45,18 +44,6 @@ class TestSessionKeys:
 
     def test_voice_key(self):
         assert voice_key() == "voice:local"
-
-    def test_imessage_key_plain(self):
-        assert imessage_key("+1234567890") == "imessage:+1234567890"
-
-    def test_imessage_key_strips_service_prefix(self):
-        assert imessage_key("imessage:user@example.com") == "imessage:user@example.com"
-
-    def test_imessage_key_normalizes_case(self):
-        assert imessage_key("USER@Example.COM") == "imessage:user@example.com"
-
-    def test_imessage_key_strips_whitespace(self):
-        assert imessage_key("  user@ex.com  ") == "imessage:user@ex.com"
 
     def test_sms_key(self):
         assert sms_key("+1234567890") == "sms:+1234567890"

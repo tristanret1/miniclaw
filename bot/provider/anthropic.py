@@ -68,49 +68,15 @@ class AnthropicProvider(BaseProvider):
 
     @staticmethod
     def _inject_cache_breakpoints(messages: list[Message]) -> list[Message]:
-        """在 messages 中注入 cache_control 断点，最大化 prompt cache 命中率。
+        """不在 messages 上注入 cache_control 断点。
 
-        策略：在最后一个 user turn 之前的那个 user turn 上打断点。
-        这样 system + 旧历史 都会被缓存，每轮只有最新的一轮对话需要计费。
+        原因：cache_control 标记本身是序列化内容的一部分，会影响前缀匹配。
+        每轮对话新增消息后，断点在 messages 中的位置会移动，导致该位置
+        起的字节变化，缓存永远不会命中——反而多付 25% 的 cache_create 费用。
 
-        Claude 允许最多 4 个 cache 断点，我们用掉 2 个给 system，
-        剩余放在 messages 中靠后的位置（倒数第二个 user turn 和 tools）。
+        system(2个) + tools(1个) = 3 个稳定断点已足够，
+        这些内容每次请求都完全相同，缓存命中率 100%。
         """
-        if not messages:
-            return messages
-
-        # 找所有 user 消息的索引
-        user_indices = [i for i, m in enumerate(messages) if m.get("role") == "user"]
-
-        if len(user_indices) < 2:
-            # 只有一轮对话，没有旧历史可缓存
-            return messages
-
-        # 深拷贝要修改的消息，避免污染 session cache
-        messages = list(messages)
-
-        # 在倒数第二个 user turn 上打断点
-        target_idx = user_indices[-2]
-        msg = dict(messages[target_idx])
-        content = msg.get("content")
-
-        if isinstance(content, str):
-            # 纯文本 → 转为 text block 加 cache_control
-            msg["content"] = [{
-                "type": "text",
-                "text": content,
-                "cache_control": {"type": "ephemeral"},
-            }]
-        elif isinstance(content, list):
-            # 已经是 block 列表 → 在最后一个 block 上加 cache_control
-            content = [dict(b) if isinstance(b, dict) else b for b in content]
-            for i in range(len(content) - 1, -1, -1):
-                if isinstance(content[i], dict):
-                    content[i] = {**content[i], "cache_control": {"type": "ephemeral"}}
-                    break
-            msg["content"] = content
-
-        messages[target_idx] = msg
         return messages
 
     def _build_body(
@@ -121,7 +87,7 @@ class AnthropicProvider(BaseProvider):
         max_tokens: int,
         stream: bool,
     ) -> dict:
-        # 注入 cache 断点：system 上已有，messages 中再加一个
+        # cache 断点只在 system 和 tools 上（稳定内容），不在 messages 上
         cached_messages = self._inject_cache_breakpoints(messages)
 
         body: dict = {
