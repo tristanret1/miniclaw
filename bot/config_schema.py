@@ -100,12 +100,26 @@ class MinimaxConfig:
 
 
 @dataclass
+class KimiConfig:
+    model: str = "kimi-latest"
+    api_url: str = "https://api.moonshot.cn/v1/chat/completions"
+
+    @classmethod
+    def from_dict(cls, d: dict) -> KimiConfig:
+        return cls(
+            model=_str(d.get("model"), "kimi-latest"),
+            api_url=_str(d.get("api_url"), "https://api.moonshot.cn/v1/chat/completions"),
+        )
+
+
+@dataclass
 class LLMConfig:
     provider: str = "anthropic"
     anthropic: AnthropicConfig = field(default_factory=AnthropicConfig)
     codex: CodexConfig = field(default_factory=CodexConfig)
     glm: GLMConfig = field(default_factory=GLMConfig)
     minimax: MinimaxConfig = field(default_factory=MinimaxConfig)
+    kimi: KimiConfig = field(default_factory=KimiConfig)
     max_history: int = 25
     max_tokens: int = 4096
     tools_enabled: bool = False
@@ -118,6 +132,7 @@ class LLMConfig:
             codex=CodexConfig.from_dict(d.get("codex") or {}),
             glm=GLMConfig.from_dict(d.get("glm") or {}),
             minimax=MinimaxConfig.from_dict(d.get("minimax") or {}),
+            kimi=KimiConfig.from_dict(d.get("kimi") or {}),
             max_history=_int(d.get("max_history"), 25),
             max_tokens=_int(d.get("max_tokens"), 4096),
             tools_enabled=_bool(d.get("tools_enabled"), False),
