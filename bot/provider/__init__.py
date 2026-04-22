@@ -5,6 +5,7 @@ from bot.provider.anthropic import AnthropicProvider
 from bot.provider.codex import CodexProvider
 from bot.provider.glm import GLMProvider
 from bot.provider.minimax import MinimaxProvider
+from bot.provider.kimi import KimiProvider
 
 __all__ = [
     "BaseProvider",
@@ -12,6 +13,7 @@ __all__ = [
     "CodexProvider",
     "GLMProvider",
     "MinimaxProvider",
+    "KimiProvider",
     "get_provider",
     "get_default_provider",
 ]
@@ -21,6 +23,7 @@ _PROVIDERS: dict[str, type[BaseProvider]] = {
     "codex": CodexProvider,
     "glm": GLMProvider,
     "minimax": MinimaxProvider,
+    "kimi": KimiProvider,
 }
 
 
@@ -43,4 +46,6 @@ def get_default_provider() -> BaseProvider:
         return get_provider("glm", cfg.llm.glm.model)
     if provider == "minimax":
         return get_provider("minimax", cfg.llm.minimax.model)
+    if provider == "kimi":
+        return get_provider("kimi", cfg.llm.kimi.model)
     return get_provider("anthropic", cfg.llm.anthropic.model)

@@ -5,6 +5,7 @@ import pytest
 from bot.provider import get_provider, get_default_provider
 from bot.provider.anthropic import AnthropicProvider
 from bot.provider.codex import CodexProvider
+from bot.provider.kimi import KimiProvider
 
 
 class TestBaseProvider:
@@ -31,6 +32,13 @@ class TestProviderRegistry:
         provider = get_provider("codex", "gpt-5.3-codex")
         assert isinstance(provider, CodexProvider)
         assert provider.model == "gpt-5.3-codex"
+
+    def test_get_kimi_provider(self):
+        provider = get_provider("kimi", "kimi-latest")
+        assert isinstance(provider, KimiProvider)
+        assert provider.model == "kimi-latest"
+        assert provider.API_URL == "https://api.moonshot.cn/v1/chat/completions"
+        assert provider.ENV_KEY == "KIMI_API_KEY"
 
     def test_get_unknown_provider_raises(self):
         with pytest.raises(ValueError, match="Unknown provider"):
