@@ -59,3 +59,16 @@ class TestProviderRegistry:
             assert isinstance(provider, CodexProvider)
         finally:
             reset_config()
+
+    def test_get_default_provider_kimi(self, monkeypatch):
+        from bot.config import reset_config
+        from bot.config_schema import AppConfig
+        import bot.config as cfg_mod
+        kimi_cfg = AppConfig.from_dict({"llm": {"provider": "kimi", "kimi": {"model": "kimi-latest"}}})
+        monkeypatch.setattr(cfg_mod, "_config", kimi_cfg)
+        try:
+            provider = get_default_provider()
+            assert isinstance(provider, KimiProvider)
+            assert provider.model == "kimi-latest"
+        finally:
+            reset_config()
