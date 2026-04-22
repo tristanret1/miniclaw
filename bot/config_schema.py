@@ -101,14 +101,14 @@ class MinimaxConfig:
 
 @dataclass
 class KimiConfig:
-    model: str = "kimi-latest"
-    api_url: str = "https://api.moonshot.cn/v1/chat/completions"
+    model: str = "kimi-for-coding"
+    api_url: str = "https://api.kimi.com/coding/v1/messages"
 
     @classmethod
     def from_dict(cls, d: dict) -> KimiConfig:
         return cls(
-            model=_str(d.get("model"), "kimi-latest"),
-            api_url=_str(d.get("api_url"), "https://api.moonshot.cn/v1/chat/completions"),
+            model=_str(d.get("model"), "kimi-for-coding"),
+            api_url=_str(d.get("api_url"), "https://api.kimi.com/coding/v1/messages"),
         )
 
 

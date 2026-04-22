@@ -34,10 +34,10 @@ class TestProviderRegistry:
         assert provider.model == "gpt-5.3-codex"
 
     def test_get_kimi_provider(self):
-        provider = get_provider("kimi", "kimi-latest")
+        provider = get_provider("kimi", "kimi-for-coding")
         assert isinstance(provider, KimiProvider)
-        assert provider.model == "kimi-latest"
-        assert provider.API_URL == "https://api.moonshot.cn/v1/chat/completions"
+        assert provider.model == "kimi-for-coding"
+        assert provider.API_URL == "https://api.kimi.com/coding/v1/messages"
         assert provider.ENV_KEY == "KIMI_API_KEY"
 
     def test_get_unknown_provider_raises(self):
@@ -64,11 +64,11 @@ class TestProviderRegistry:
         from bot.config import reset_config
         from bot.config_schema import AppConfig
         import bot.config as cfg_mod
-        kimi_cfg = AppConfig.from_dict({"llm": {"provider": "kimi", "kimi": {"model": "kimi-latest"}}})
+        kimi_cfg = AppConfig.from_dict({"llm": {"provider": "kimi", "kimi": {"model": "kimi-for-coding"}}})
         monkeypatch.setattr(cfg_mod, "_config", kimi_cfg)
         try:
             provider = get_default_provider()
             assert isinstance(provider, KimiProvider)
-            assert provider.model == "kimi-latest"
+            assert provider.model == "kimi-for-coding"
         finally:
             reset_config()

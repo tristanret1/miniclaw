@@ -60,3 +60,28 @@ class TestAgent:
                       system_prompt="hi")
         provider = agent.effective_provider
         assert provider in ("anthropic", "codex")
+
+    def test_effective_model_follows_provider(self, tmp_path, monkeypatch):
+        """effective_model must read from the cfg section matching cfg.llm.provider."""
+        from bot.config import reset_config
+        from bot.config_schema import AppConfig
+        import bot.config as cfg_mod
+
+        ws = tmp_path / "workspace"
+        ws.mkdir()
+        for provider, expected in [
+            ("kimi", "kimi-for-coding"),
+            ("glm", "glm-4.7-flash"),
+            ("codex", "gpt-5.3-codex"),
+            ("minimax", "MiniMax-M2.7"),
+            ("anthropic", "claude-sonnet-4-20250514"),
+        ]:
+            cfg = AppConfig.from_dict({"llm": {"provider": provider}})
+            monkeypatch.setattr(cfg_mod, "_config", cfg)
+            try:
+                agent = Agent(name="t", discord_token="fake",
+                              workspace_dir=ws, system_prompt="hi")
+                assert agent.effective_model == expected, \
+                    f"provider={provider}: got {agent.effective_model}"
+            finally:
+                reset_config()

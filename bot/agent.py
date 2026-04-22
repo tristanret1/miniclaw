@@ -51,14 +51,15 @@ class Agent:
             return self.model
         from bot.config import get_config
         cfg = get_config()
-        provider = cfg.llm.provider
         provider_configs = {
+            "anthropic": cfg.llm.anthropic,
             "codex": cfg.llm.codex,
             "glm": cfg.llm.glm,
             "minimax": cfg.llm.minimax,
+            "kimi": cfg.llm.kimi,
         }
-        pcfg = provider_configs.get(provider)
-        return pcfg.model if pcfg else cfg.llm.anthropic.model
+        pcfg = provider_configs.get(cfg.llm.provider) or cfg.llm.anthropic
+        return pcfg.model
 
     @property
     def effective_provider(self) -> str:
