@@ -12,6 +12,9 @@ llm:
   minimax:
     model: MiniMax-M2.7
     api_url: https://api.minimaxi.com/v1/text/chatcompletion_v2
+  kimi:
+    model: kimi-latest
+    api_url: https://api.moonshot.cn/v1/chat/completions
   max_history: 25
   max_tokens: 4096
   tools_enabled: true
